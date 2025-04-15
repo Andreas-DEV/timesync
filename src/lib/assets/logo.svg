@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <!-- Background Circle -->
+  <circle cx="200" cy="200" r="180" fill="#1A1A2E" />
+  
+  <!-- Outer Ring Gradient -->
+  <circle cx="200" cy="200" r="170" fill="none" stroke="url(#outerGradient)" stroke-width="10" />
+  
+  <!-- Clock Face Inner Circle -->
+  <circle cx="200" cy="200" r="140" fill="#16213E" />
+  
+  <!-- Modern Clock Markers -->
+  <g stroke="#4D7CFE" stroke-width="4" stroke-linecap="round">
+    <!-- 12 o'clock marker -->
+    <line x1="200" y1="80" x2="200" y2="100" />
+    <!-- 3 o'clock marker -->
+    <line x1="320" y1="200" x2="300" y2="200" />
+    <!-- 6 o'clock marker -->
+    <line x1="200" y1="320" x2="200" y2="300" />
+    <!-- 9 o'clock marker -->
+    <line x1="80" y1="200" x2="100" y2="200" />
+    
+    <!-- Subtle Minute Markers -->
+    <g stroke-width="2" opacity="0.6">
+      <line x1="240" y1="86" x2="234" y2="100" />
+      <line x1="280" y1="120" x2="266" y2="130" />
+      <line x1="314" y1="160" x2="295" y2="165" />
+      <line x1="314" y1="240" x2="295" y2="235" />
+      <line x1="280" y1="280" x2="266" y2="270" />
+      <line x1="240" y1="314" x2="234" y2="300" />
+      <line x1="160" y1="314" x2="166" y2="300" />
+      <line x1="120" y1="280" x2="134" y2="270" />
+      <line x1="86" y1="240" x2="105" y2="235" />
+      <line x1="86" y1="160" x2="105" y2="165" />
+      <line x1="120" y1="120" x2="134" y2="130" />
+      <line x1="160" y1="86" x2="166" y2="100" />
+    </g>
+  </g>
+  
+  <!-- Clock Hands -->
+  <!-- Hour Hand -->
+  <line x1="200" y1="200" x2="170" y2="150" stroke="#E94560" stroke-width="6" stroke-linecap="round" transform="rotate(20, 200, 200)" />
+  
+  <!-- Minute Hand -->
+  <line x1="200" y1="200" x2="140" y2="200" stroke="#4D7CFE" stroke-width="5" stroke-linecap="round" transform="rotate(280, 200, 200)" />
+  
+  <!-- Center Circle -->
+  <circle cx="200" cy="200" r="10" fill="#E94560" />
+  <circle cx="200" cy="200" r="6" fill="#4D7CFE" />
+  
+  <!-- Subtle glow effect for the text -->
+  <filter id="glow">
+    <feGaussianBlur stdDeviation="2" result="blur" />
+    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+  </filter>
+  
+  <!-- Glowing Effect for Modern Look -->
+  <circle cx="200" cy="200" r="150" fill="none" stroke="url(#glowGradient)" stroke-width="3" opacity="0.6" />
+  
+  <!-- Gradients Definition -->
+  <defs>
+    <linearGradient id="outerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4D7CFE" />
+      <stop offset="100%" stop-color="#E94560" />
+    </linearGradient>
+    
+    <radialGradient id="glowGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4D7CFE" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#4D7CFE" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+</svg>
