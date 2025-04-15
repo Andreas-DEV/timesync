@@ -59,11 +59,9 @@
         // Check if saved site exists and if user has permission to access it
         if (savedActiveSiteId) {
           // Special check for admin section - only accessible to Berith
-          if (savedActiveSiteId === 'admin' && userName !== 'Berith') {
-            activeSiteId = 'dashboard'; // Default if they don't have admin access
-          } else {
+         
             activeSiteId = savedActiveSiteId;
-          }
+          
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -87,8 +85,8 @@
     { id: "log", label: "Log Demo", icon: "cog" },
     { id: "cvr", label: "CVR Tjek", icon: "search" },
     { id: "ansogninger", label: "Ansøgninger", icon: "cog" },
-    // Only show Admin tab if the user's name is "Berith"
-    ...(userName === "Berith" ? [{ id: "admin", label: "Admin", icon: "cog" }] : [])
+    { id: "admin", label: "Admin", icon: "cog" },
+    
   ];
 
   // Handle site changes
@@ -200,12 +198,13 @@
               <!-- Your analytics content goes here -->
               <Ansogninger/>
             </div>
-          {:else if activeSiteId === 'admin' && userName === 'Berith'}
+          {:else if activeSiteId === 'admin'}
             <h1 class="text-2xl font-bold mb-4">Admin</h1>
             <div class="bg-white p-4 rounded-lg shadow">
               <!-- Your analytics content goes here -->
               <Admin/>
             </div>
+        
          
           {/if}
         </main>

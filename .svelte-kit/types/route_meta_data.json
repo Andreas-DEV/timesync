@@ -1,0 +1,7 @@
+{
+	"/": [],
+	"/api/cvr-proxy": [
+		"src/routes/api/cvr-proxy/+server.js"
+	],
+	"/dashboard": []
+}
