@@ -14,7 +14,7 @@
     });
   </script>
   
-  <main class="bg-gray-100 rounded-xl">
+  <main class=" rounded-xl">
     <div class="container mx-auto p-4">
       
       <!-- Tabs -->

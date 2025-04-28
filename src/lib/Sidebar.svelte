@@ -1,5 +1,5 @@
 <script>
-    import { createEventDispatcher } from "svelte";
+    import { createEventDispatcher, onMount } from "svelte";
     import PocketBase from "pocketbase";
     import svg from "$lib/assets/logo.svg"
     // Props
@@ -17,21 +17,45 @@
         { id: "cvr", label: "CVR", icon: "chart-bar" },
         { id: "ansogninger", label: "Ansøgninger", icon: "cog" },
     ];
+    
+    // Default to cvr as in your original code
     export let activeSiteId = "cvr";
     export let collapsed = false;
 
     // Event dispatcher to notify parent components
     const dispatch = createEventDispatcher();
 
+    // Load saved settings from localStorage on component mount
+    onMount(() => {
+        // Load active tab from localStorage if available
+        const savedActiveTab = localStorage.getItem('timesync_active_tab');
+        if (savedActiveTab) {
+            activeSiteId = savedActiveTab;
+            // Notify parent components of the loaded tab
+            dispatch("siteChange", { siteId: activeSiteId });
+        }
+        
+        // Optionally load sidebar collapsed state too
+        const savedCollapsedState = localStorage.getItem('timesync_sidebar_collapsed');
+        if (savedCollapsedState !== null) {
+            collapsed = savedCollapsedState === 'true';
+            dispatch("toggleCollapse", { collapsed });
+        }
+    });
+
     // Handle site selection
     function selectSite(siteId) {
         activeSiteId = siteId;
+        // Save to localStorage
+        localStorage.setItem('timesync_active_tab', siteId);
         dispatch("siteChange", { siteId });
     }
 
     // Toggle sidebar collapsed state
     function toggleSidebar() {
         collapsed = !collapsed;
+        // Save to localStorage
+        localStorage.setItem('timesync_sidebar_collapsed', collapsed.toString());
         dispatch("toggleCollapse", { collapsed });
     }
 
@@ -44,6 +68,9 @@
 
             // Clear auth store and redirect to home
             pb.authStore.clear();
+            // Clear saved tab when logging out (optional)
+            localStorage.removeItem('timesync_active_tab');
+            localStorage.removeItem('timesync_sidebar_collapsed');
             window.location.href = "/";
         } catch (error) {
             console.error("Logout error:", error);

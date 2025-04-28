@@ -3,15 +3,16 @@
     import HourLogList from "./HourLogList.svelte";
     import ProductLogButton from "./ProductLogButton.svelte";
     import ProductLogsCalendar from "./ProductLogsCalendar.svelte";
-    import TestComponent from "./TestComponent.svelte";
+    import ActivityDashboard from "./ActivityDashboard.svelte";
     import HourLog from "./HourLog.svelte";
-
+    import UserManangement from "./UserManangement.svelte";
     import PocketBase from "pocketbase";
     const pb = new PocketBase("https://timesync.pockethost.io/");
 
     // Define admin tools - only include actually implemented components
     const adminTools = [
         { id: "activity", name: "Activity Dashboard" },
+        { id: "user", name: "User Management" },
         { id: "hourlog", name: "Settings" },
         // To add a new component in the future, just add a new entry here:
         // { id: 'newComponent', name: 'New Component Label' }
@@ -49,11 +50,16 @@
     <!-- Component Display Area -->
     <div class="bg-white shadow-md rounded-lg p-4">
         {#if selectedTool === "activity"}
-        <div class="flex gap-2 items-center">
-            <ProductLogButton pocketbase={pb} onSuccess={handleProductLogged} />
-            <HourLog/>
-        </div>
-            <TestComponent />
+            <div class="flex gap-2 items-center">
+                <ProductLogButton
+                    pocketbase={pb}
+                    onSuccess={handleProductLogged}
+                />
+                <HourLog />
+            </div>
+            <ActivityDashboard />
+        {:else if selectedTool === "user"}
+            <UserManangement />
         {:else if selectedTool === "hourlog"}
             <HourLogList />
         {/if}
