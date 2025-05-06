@@ -11,6 +11,8 @@
   // Initialize PocketBase
   const pb = new PocketBase("https://timesync.pockethost.io/");
 
+  let showInvoiced = "all"; // "all", "invoiced", "not-invoiced"
+
   // State management
   let hourLogs = [];
   let productLogs = [];
@@ -42,157 +44,221 @@
 
   // Calculate monthly statistics for hour logs
   function calculateMonthlyHourStats(logsData) {
-    console.time('Calculate hour stats');
-    const stats = [];
+  console.time('Calculate hour stats');
+  const stats = [];
 
-    for (let month = 0; month < 12; month++) {
-      // Filter logs for this month and year
-      const monthLogs = logsData.filter((log) => {
-        const logDate = new Date(log.dato);
-        return (
-          logDate.getMonth() === month && logDate.getFullYear() === currentYear
-        );
-      });
+  for (let month = 0; month < 12; month++) {
+    // Filter logs for this month and year
+    const monthLogs = logsData.filter((log) => {
+      const logDate = new Date(log.dato);
+      return (
+        logDate.getMonth() === month && logDate.getFullYear() === currentYear
+      );
+    });
 
-      // Calculate totals
-      const totalHours = monthLogs.reduce((sum, log) => sum + log.totalsum, 0);
-      const totalAmount = monthLogs.reduce((sum, log) => sum + log.price, 0);
-      const uniqueCustomers = [
-        ...new Set(monthLogs.map((log) => log.kunde_navn)),
-      ];
-      const uniqueUsers = [...new Set(monthLogs.map((log) => log.user_name))];
+    // Calculate totals
+    const totalHours = monthLogs.reduce((sum, log) => sum + log.totalsum, 0);
+    const totalAmount = monthLogs.reduce((sum, log) => sum + log.price, 0);
+    const uniqueCustomers = [
+      ...new Set(monthLogs.map((log) => log.kunde_navn)),
+    ];
+    const uniqueUsers = [...new Set(monthLogs.map((log) => log.user_name))];
 
-      // Collect data by user
-      const userStats = {};
-      monthLogs.forEach((log) => {
-        const userName = log.user_name || "Unknown";
-        if (!userStats[userName]) {
-          userStats[userName] = {
-            logCount: 0,
-            totalHours: 0,
-            totalAmount: 0,
-          };
-        }
-
-        userStats[userName].logCount += 1;
-        userStats[userName].totalHours += log.totalsum;
-        userStats[userName].totalAmount += log.price;
-      });
-
-      stats.push({
-        month,
-        monthName: monthNames[month],
-        logCount: monthLogs.length,
-        totalHours: totalHours.toFixed(2),
-        totalAmount: totalAmount.toFixed(2),
-        uniqueCustomers: uniqueCustomers.length,
-        uniqueUsers: uniqueUsers.length,
-        logs: monthLogs,
-        userStats,
-      });
-    }
+    // Calculate invoiced vs non-invoiced
+    const invoicedLogs = monthLogs.filter(log => log.invoiced === true);
+    const notInvoicedLogs = monthLogs.filter(log => log.invoiced !== true);
     
-    console.timeEnd('Calculate hour stats');
-    return stats;
+    const invoicedHours = invoicedLogs.reduce((sum, log) => sum + log.totalsum, 0);
+    const invoicedAmount = invoicedLogs.reduce((sum, log) => sum + log.price, 0);
+    
+    const notInvoicedHours = notInvoicedLogs.reduce((sum, log) => sum + log.totalsum, 0);
+    const notInvoicedAmount = notInvoicedLogs.reduce((sum, log) => sum + log.price, 0);
+
+    // Collect data by user
+    const userStats = {};
+    monthLogs.forEach((log) => {
+      const userName = log.user_name || "Unknown";
+      if (!userStats[userName]) {
+        userStats[userName] = {
+          logCount: 0,
+          totalHours: 0,
+          totalAmount: 0,
+          invoicedLogCount: 0,
+          invoicedHours: 0,
+          invoicedAmount: 0,
+        };
+      }
+
+      userStats[userName].logCount += 1;
+      userStats[userName].totalHours += log.totalsum;
+      userStats[userName].totalAmount += log.price;
+      
+      // Track invoiced stats by user
+      if (log.invoiced === true) {
+        userStats[userName].invoicedLogCount += 1;
+        userStats[userName].invoicedHours += log.totalsum;
+        userStats[userName].invoicedAmount += log.price;
+      }
+    });
+
+    stats.push({
+      month,
+      monthName: monthNames[month],
+      logCount: monthLogs.length,
+      totalHours: totalHours.toFixed(2),
+      totalAmount: totalAmount.toFixed(2),
+      uniqueCustomers: uniqueCustomers.length,
+      uniqueUsers: uniqueUsers.length,
+      logs: monthLogs,
+      userStats,
+      // New invoice stats
+      invoicedLogCount: invoicedLogs.length,
+      invoicedHours: invoicedHours.toFixed(2),
+      invoicedAmount: invoicedAmount.toFixed(2),
+      notInvoicedLogCount: notInvoicedLogs.length,
+      notInvoicedHours: notInvoicedHours.toFixed(2),
+      notInvoicedAmount: notInvoicedAmount.toFixed(2),
+    });
   }
+  
+  console.timeEnd('Calculate hour stats');
+  return stats;
+}
 
   // Calculate monthly statistics for product logs
   function calculateMonthlyProductStats(logsData) {
-    console.time('Calculate product stats');
-    const stats = [];
+  console.time('Calculate product stats');
+  const stats = [];
 
-    for (let month = 0; month < 12; month++) {
-      // Filter logs for this month and year
-      const monthLogs = logsData.filter((log) => {
-        const logDate = new Date(log.created);
-        return (
-          logDate.getMonth() === month && logDate.getFullYear() === currentYear
-        );
-      });
-
-      // Calculate totals
-      const totalQuantity = monthLogs.reduce(
-        (sum, log) => sum + log.quantity,
-        0,
+  for (let month = 0; month < 12; month++) {
+    // Filter logs for this month and year
+    const monthLogs = logsData.filter((log) => {
+      const logDate = new Date(log.created);
+      return (
+        logDate.getMonth() === month && logDate.getFullYear() === currentYear
       );
-      const totalAmount = monthLogs.reduce(
-        (sum, log) => sum + log.total_price,
-        0,
-      );
-      const uniqueCustomers = [
-        ...new Set(
-          monthLogs.map((log) => log.expand?.kunder?.navn || log.kunder),
+    });
+
+    // Calculate totals
+    const totalQuantity = monthLogs.reduce(
+      (sum, log) => sum + log.quantity,
+      0,
+    );
+    const totalAmount = monthLogs.reduce(
+      (sum, log) => sum + log.total_price,
+      0,
+    );
+    const uniqueCustomers = [
+      ...new Set(
+        monthLogs.map((log) => log.expand?.kunder?.navn || log.kunder),
+      ),
+    ];
+    const uniqueUsers = [
+      ...new Set(monthLogs.map((log) => log.expand?.user?.name || log.user)),
+    ];
+    const uniqueProducts = [
+      ...new Set(
+        monthLogs.map(
+          (log) => log.expand?.product?.productName || log.product,
         ),
-      ];
-      const uniqueUsers = [
-        ...new Set(monthLogs.map((log) => log.expand?.user?.name || log.user)),
-      ];
-      const uniqueProducts = [
-        ...new Set(
-          monthLogs.map(
-            (log) => log.expand?.product?.productName || log.product,
-          ),
-        ),
-      ];
+      ),
+    ];
 
-      // Collect data by user
-      const userStats = {};
-      monthLogs.forEach((log) => {
-        const userName = log.expand?.user?.name || log.user || "Unknown";
-        if (!userStats[userName]) {
-          userStats[userName] = {
-            logCount: 0,
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-        }
+    // Calculate invoiced vs non-invoiced
+    const invoicedLogs = monthLogs.filter(log => log.invoiced === true);
+    const notInvoicedLogs = monthLogs.filter(log => log.invoiced !== true);
+    
+    const invoicedQuantity = invoicedLogs.reduce((sum, log) => sum + log.quantity, 0);
+    const invoicedAmount = invoicedLogs.reduce((sum, log) => sum + log.total_price, 0);
+    
+    const notInvoicedQuantity = notInvoicedLogs.reduce((sum, log) => sum + log.quantity, 0);
+    const notInvoicedAmount = notInvoicedLogs.reduce((sum, log) => sum + log.total_price, 0);
 
-        userStats[userName].logCount += 1;
-        userStats[userName].totalQuantity += log.quantity;
-        userStats[userName].totalAmount += log.total_price;
-      });
+    // Collect data by user
+    const userStats = {};
+    monthLogs.forEach((log) => {
+      const userName = log.expand?.user?.name || log.user || "Unknown";
+      if (!userStats[userName]) {
+        userStats[userName] = {
+          logCount: 0,
+          totalQuantity: 0,
+          totalAmount: 0,
+          invoicedLogCount: 0,
+          invoicedQuantity: 0,
+          invoicedAmount: 0,
+        };
+      }
 
-      // Collect data by product
-      const productStats = {};
-      monthLogs.forEach((log) => {
-        const productName =
-          log.expand?.product?.productName || log.product || "Unknown";
-        if (!productStats[productName]) {
-          productStats[productName] = {
-            logCount: 0,
-            totalQuantity: 0,
-            totalAmount: 0,
-          };
-        }
+      userStats[userName].logCount += 1;
+      userStats[userName].totalQuantity += log.quantity;
+      userStats[userName].totalAmount += log.total_price;
+      
+      // Track invoiced stats by user
+      if (log.invoiced === true) {
+        userStats[userName].invoicedLogCount += 1;
+        userStats[userName].invoicedQuantity += log.quantity;
+        userStats[userName].invoicedAmount += log.total_price;
+      }
+    });
 
-        productStats[productName].logCount += 1;
-        productStats[productName].totalQuantity += log.quantity;
-        productStats[productName].totalAmount += log.total_price;
-      });
+    // Collect data by product
+    const productStats = {};
+    monthLogs.forEach((log) => {
+      const productName =
+        log.expand?.product?.productName || log.product || "Unknown";
+      if (!productStats[productName]) {
+        productStats[productName] = {
+          logCount: 0,
+          totalQuantity: 0,
+          totalAmount: 0,
+          invoicedLogCount: 0,
+          invoicedQuantity: 0,
+          invoicedAmount: 0,
+        };
+      }
 
-      stats.push({
-        month,
-        monthName: monthNames[month],
-        logCount: monthLogs.length,
-        totalQuantity: totalQuantity,
-        totalAmount: totalAmount.toFixed(2),
-        uniqueCustomers: uniqueCustomers.length,
-        uniqueUsers: uniqueUsers.length,
-        uniqueProducts: uniqueProducts.length,
-        logs: monthLogs,
-        userStats,
-        productStats,
-      });
-    }
+      productStats[productName].logCount += 1;
+      productStats[productName].totalQuantity += log.quantity;
+      productStats[productName].totalAmount += log.total_price;
+      
+      // Track invoiced stats by product
+      if (log.invoiced === true) {
+        productStats[productName].invoicedLogCount += 1;
+        productStats[productName].invoicedQuantity += log.quantity;
+        productStats[productName].invoicedAmount += log.total_price;
+      }
+    });
 
-    console.timeEnd('Calculate product stats');
-    return stats;
+    stats.push({
+      month,
+      monthName: monthNames[month],
+      logCount: monthLogs.length,
+      totalQuantity: totalQuantity,
+      totalAmount: totalAmount.toFixed(2),
+      uniqueCustomers: uniqueCustomers.length,
+      uniqueUsers: uniqueUsers.length,
+      uniqueProducts: uniqueProducts.length,
+      logs: monthLogs,
+      userStats,
+      productStats,
+      // New invoice stats
+      invoicedLogCount: invoicedLogs.length,
+      invoicedQuantity: invoicedQuantity,
+      invoicedAmount: invoicedAmount.toFixed(2),
+      notInvoicedLogCount: notInvoicedLogs.length,
+      notInvoicedQuantity: notInvoicedQuantity,
+      notInvoicedAmount: notInvoicedAmount.toFixed(2),
+    });
   }
+
+  console.timeEnd('Calculate product stats');
+  return stats;
+}
 
   // OPTIMIZED: Fetch logs with pagination and expanded relations
   async function fetchLogs() {
     isLoading = true;
-    console.time('Total fetch time');
+    console.time("Total fetch time");
 
     // Reset arrays to ensure clean data loading
     hourLogs = [];
@@ -206,38 +272,46 @@
       const endDate = new Date(currentYear + 1, 0, 0);
 
       // OPTIMIZATION 1: Batch requests with Promise.all
-      console.time('Fetch data');
-      
+      console.time("Fetch data");
+
       const [hourRecords, productRecords] = await Promise.all([
         // OPTIMIZATION 2: Fetch expanded hour logs in a single request
         pb.collection("log").getFullList({
           sort: "-dato",
           filter: `dato >= "${startDate.toISOString()}" && dato <= "${endDate.toISOString()}"`,
-          expand: "kunde" // Expand customer data if needed
+          expand: "kunde", // Expand customer data if needed
         }),
-        
+
         // OPTIMIZATION 3: Fetch expanded product logs in a single request
         pb.collection("product_logs").getFullList({
           sort: "-created",
           filter: `created >= "${startDate.toISOString()}" && created <= "${endDate.toISOString()}"`,
-          expand: "kunder,product,user" // Expand all relations at once
-        })
+          expand: "kunder,product,user", // Expand all relations at once
+        }),
       ]);
-      
-      console.timeEnd('Fetch data');
-      console.log(`Fetched ${hourRecords.length} hour logs and ${productRecords.length} product logs`);
+
+      console.timeEnd("Fetch data");
+      console.log(
+        `Fetched ${hourRecords.length} hour logs and ${productRecords.length} product logs`,
+      );
 
       // Store the data
-      hourLogs = hourRecords;
-      productLogs = productRecords;
+      hourLogs = hourRecords.map((log) => ({
+        ...log,
+        invoiced: log.invoiced || false, // Set default if field doesn't exist yet
+      }));
 
+      productLogs = productRecords.map((log) => ({
+        ...log,
+        invoiced: log.invoiced || false, // Set default if field doesn't exist yet
+      }));
       // OPTIMIZATION 4: Process data in a web worker (simulated with timers here)
       setTimeout(() => {
-        console.time('Process data');
+        console.time("Process data");
         // Calculate monthly statistics
         monthlyHourStats = calculateMonthlyHourStats(hourLogs);
         monthlyProductStats = calculateMonthlyProductStats(productLogs);
-        
+
         // Extract unique users from both types of logs
         const hourLogUsers = [...new Set(hourLogs.map((log) => log.user_name))];
         const productLogUsers = [
@@ -249,15 +323,69 @@
         // Combine unique users from both logs
         const uniqueUsers = [...new Set([...hourLogUsers, ...productLogUsers])];
         allUsers = uniqueUsers.map((user) => ({ name: user || "Unknown" }));
-        
-        console.timeEnd('Process data');
+
+        console.timeEnd("Process data");
         isLoading = false;
       }, 10); // Small delay to allow UI to update
     } catch (error) {
       console.error("Error fetching logs:", error);
       isLoading = false;
     } finally {
-      console.timeEnd('Total fetch time');
+      console.timeEnd("Total fetch time");
+    }
+  }
+
+  async function toggleHourLogInvoiced(id, currentStatus) {
+    isLoading = true;
+    try {
+      // Update the database record
+      await pb.collection("log").update(id, {
+        invoiced: !currentStatus,
+      });
+
+      // Update local data
+      hourLogs = hourLogs.map((log) =>
+        log.id === id ? { ...log, invoiced: !currentStatus } : log,
+      );
+
+      // Recalculate stats for the affected month
+      const logToUpdate = hourLogs.find((log) => log.id === id);
+      if (logToUpdate) {
+        const logMonth = new Date(logToUpdate.dato).getMonth();
+        monthlyHourStats = calculateMonthlyHourStats(hourLogs);
+      }
+    } catch (error) {
+      console.error("Error updating invoice status:", error);
+      alert("Error updating invoice status");
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function toggleProductLogInvoiced(id, currentStatus) {
+    isLoading = true;
+    try {
+      // Update the database record
+      await pb.collection("product_logs").update(id, {
+        invoiced: !currentStatus,
+      });
+
+      // Update local data
+      productLogs = productLogs.map((log) =>
+        log.id === id ? { ...log, invoiced: !currentStatus } : log,
+      );
+
+      // Recalculate stats for the affected month
+      const logToUpdate = productLogs.find((log) => log.id === id);
+      if (logToUpdate) {
+        const logMonth = new Date(logToUpdate.created).getMonth();
+        monthlyProductStats = calculateMonthlyProductStats(productLogs);
+      }
+    } catch (error) {
+      console.error("Error updating invoice status:", error);
+      alert("Error updating invoice status");
+    } finally {
+      isLoading = false;
     }
   }
 
@@ -274,10 +402,15 @@
     const monthMatch =
       selectedMonth !== null ? logDate.getMonth() === selectedMonth : true;
     const userMatch = selectedUser ? log.user_name === selectedUser : true;
-    return monthMatch && userMatch;
+    const invoiceMatch =
+      showInvoiced === "all"
+        ? true
+        : showInvoiced === "invoiced"
+          ? log.invoiced === true
+          : log.invoiced !== true;
+    return monthMatch && userMatch && invoiceMatch;
   });
 
-  // Filter product logs for the selected month and user
   $: filteredProductLogs = productLogs.filter((log) => {
     const logDate = new Date(log.created);
     const monthMatch =
@@ -285,7 +418,13 @@
     const userMatch = selectedUser
       ? (log.expand?.user?.name || log.user) === selectedUser
       : true;
-    return monthMatch && userMatch;
+    const invoiceMatch =
+      showInvoiced === "all"
+        ? true
+        : showInvoiced === "invoiced"
+          ? log.invoiced === true
+          : log.invoiced !== true;
+    return monthMatch && userMatch && invoiceMatch;
   });
 
   // Format date for display
@@ -299,23 +438,23 @@
       isLoading = true;
       try {
         // Find the log to delete to identify its month
-        const logToDelete = hourLogs.find(log => log.id === id);
+        const logToDelete = hourLogs.find((log) => log.id === id);
         if (!logToDelete) {
           throw new Error("Log not found");
         }
-        
+
         const logMonth = new Date(logToDelete.dato).getMonth();
         await pb.collection("log").delete(id);
-        
+
         // Remove from hourLogs array
         hourLogs = hourLogs.filter((log) => log.id !== id);
-        
+
         // Only recalculate the affected month
-        const affectedMonthLogs = hourLogs.filter(log => {
+        const affectedMonthLogs = hourLogs.filter((log) => {
           const date = new Date(log.dato);
           return date.getMonth() === logMonth;
         });
-        
+
         // Update just the stats for the affected month
         const updatedMonthStat = {
           month: logMonth,
@@ -328,13 +467,23 @@
           logs: [],
           userStats: {},
         };
-        
+
         if (affectedMonthLogs.length > 0) {
-          const totalHours = affectedMonthLogs.reduce((sum, log) => sum + log.totalsum, 0);
-          const totalAmount = affectedMonthLogs.reduce((sum, log) => sum + log.price, 0);
-          const uniqueCustomers = [...new Set(affectedMonthLogs.map((log) => log.kunde_navn))];
-          const uniqueUsers = [...new Set(affectedMonthLogs.map((log) => log.user_name))];
-          
+          const totalHours = affectedMonthLogs.reduce(
+            (sum, log) => sum + log.totalsum,
+            0,
+          );
+          const totalAmount = affectedMonthLogs.reduce(
+            (sum, log) => sum + log.price,
+            0,
+          );
+          const uniqueCustomers = [
+            ...new Set(affectedMonthLogs.map((log) => log.kunde_navn)),
+          ];
+          const uniqueUsers = [
+            ...new Set(affectedMonthLogs.map((log) => log.user_name)),
+          ];
+
           // Collect data by user
           const userStats = {};
           affectedMonthLogs.forEach((log) => {
@@ -351,7 +500,7 @@
             userStats[userName].totalHours += log.totalsum;
             userStats[userName].totalAmount += log.price;
           });
-          
+
           updatedMonthStat.logCount = affectedMonthLogs.length;
           updatedMonthStat.totalHours = totalHours.toFixed(2);
           updatedMonthStat.totalAmount = totalAmount.toFixed(2);
@@ -360,12 +509,12 @@
           updatedMonthStat.logs = affectedMonthLogs;
           updatedMonthStat.userStats = userStats;
         }
-        
+
         // Update the specific month stat without recalculating everything
-        monthlyHourStats = monthlyHourStats.map(stat => 
-          stat.month === logMonth ? updatedMonthStat : stat
+        monthlyHourStats = monthlyHourStats.map((stat) =>
+          stat.month === logMonth ? updatedMonthStat : stat,
         );
-        
+
         alert("Hour log deleted successfully");
       } catch (error) {
         console.error("Error deleting hour log:", error);
@@ -382,23 +531,23 @@
       isLoading = true;
       try {
         // Find the log to delete to identify its month
-        const logToDelete = productLogs.find(log => log.id === id);
+        const logToDelete = productLogs.find((log) => log.id === id);
         if (!logToDelete) {
           throw new Error("Log not found");
         }
-        
+
         const logMonth = new Date(logToDelete.created).getMonth();
         await pb.collection("product_logs").delete(id);
-        
+
         // Remove from productLogs array
         productLogs = productLogs.filter((log) => log.id !== id);
-        
+
         // Only recalculate the affected month
-        const affectedMonthLogs = productLogs.filter(log => {
+        const affectedMonthLogs = productLogs.filter((log) => {
           const date = new Date(log.created);
           return date.getMonth() === logMonth;
         });
-        
+
         // Update just the stats for the affected month
         const updatedMonthStat = {
           month: logMonth,
@@ -413,14 +562,38 @@
           userStats: {},
           productStats: {},
         };
-        
+
         if (affectedMonthLogs.length > 0) {
-          const totalQuantity = affectedMonthLogs.reduce((sum, log) => sum + log.quantity, 0);
-          const totalAmount = affectedMonthLogs.reduce((sum, log) => sum + log.total_price, 0);
-          const uniqueCustomers = [...new Set(affectedMonthLogs.map((log) => log.expand?.kunder?.navn || log.kunder))];
-          const uniqueUsers = [...new Set(affectedMonthLogs.map((log) => log.expand?.user?.name || log.user))];
-          const uniqueProducts = [...new Set(affectedMonthLogs.map((log) => log.expand?.product?.productName || log.product))];
-          
+          const totalQuantity = affectedMonthLogs.reduce(
+            (sum, log) => sum + log.quantity,
+            0,
+          );
+          const totalAmount = affectedMonthLogs.reduce(
+            (sum, log) => sum + log.total_price,
+            0,
+          );
+          const uniqueCustomers = [
+            ...new Set(
+              affectedMonthLogs.map(
+                (log) => log.expand?.kunder?.navn || log.kunder,
+              ),
+            ),
+          ];
+          const uniqueUsers = [
+            ...new Set(
+              affectedMonthLogs.map(
+                (log) => log.expand?.user?.name || log.user,
+              ),
+            ),
+          ];
+          const uniqueProducts = [
+            ...new Set(
+              affectedMonthLogs.map(
+                (log) => log.expand?.product?.productName || log.product,
+              ),
+            ),
+          ];
+
           // Collect data by user
           const userStats = {};
           affectedMonthLogs.forEach((log) => {
@@ -437,11 +610,12 @@
             userStats[userName].totalQuantity += log.quantity;
             userStats[userName].totalAmount += log.total_price;
           });
-          
+
           // Collect data by product
           const productStats = {};
           affectedMonthLogs.forEach((log) => {
-            const productName = log.expand?.product?.productName || log.product || "Unknown";
+            const productName =
+              log.expand?.product?.productName || log.product || "Unknown";
             if (!productStats[productName]) {
               productStats[productName] = {
                 logCount: 0,
@@ -454,7 +628,7 @@
             productStats[productName].totalQuantity += log.quantity;
             productStats[productName].totalAmount += log.total_price;
           });
-          
+
           updatedMonthStat.logCount = affectedMonthLogs.length;
           updatedMonthStat.totalQuantity = totalQuantity;
           updatedMonthStat.totalAmount = totalAmount.toFixed(2);
@@ -465,12 +639,12 @@
           updatedMonthStat.userStats = userStats;
           updatedMonthStat.productStats = productStats;
         }
-        
+
         // Update the specific month stat without recalculating everything
-        monthlyProductStats = monthlyProductStats.map(stat => 
-          stat.month === logMonth ? updatedMonthStat : stat
+        monthlyProductStats = monthlyProductStats.map((stat) =>
+          stat.month === logMonth ? updatedMonthStat : stat,
         );
-        
+
         alert("Product log deleted successfully");
       } catch (error) {
         console.error("Error deleting product log:", error);
@@ -1045,25 +1219,26 @@
   let lastCalculatedCombinedStats = null;
   let lastHourStatsVersion = -1;
   let lastProductStatsVersion = -1;
-  
+
   $: {
     // Determine if we need to recalculate (only when hour or product stats change)
     const hourStatsVersion = monthlyHourStats.length;
     const productStatsVersion = monthlyProductStats.length;
-    
-    if (hourStatsVersion !== lastHourStatsVersion || 
-        productStatsVersion !== lastProductStatsVersion) {
-      
-      console.time('Calculate combined stats');
-      
+
+    if (
+      hourStatsVersion !== lastHourStatsVersion ||
+      productStatsVersion !== lastProductStatsVersion
+    ) {
+      console.time("Calculate combined stats");
+
       // Recalculate combined stats
       lastCalculatedCombinedStats = monthlyHourStats.map((hourStat, index) => {
         const productStat = monthlyProductStats[index] || {
           logCount: 0,
           totalQuantity: 0,
-          totalAmount: "0.00"
+          totalAmount: "0.00",
         };
-        
+
         return {
           month: hourStat.month,
           monthName: hourStat.monthName,
@@ -1074,36 +1249,39 @@
           totalProductQuantity: productStat.totalQuantity,
           hourAmount: parseFloat(hourStat.totalAmount),
           productAmount: parseFloat(productStat.totalAmount),
-          totalAmount: parseFloat(hourStat.totalAmount) + parseFloat(productStat.totalAmount),
+          totalAmount:
+            parseFloat(hourStat.totalAmount) +
+            parseFloat(productStat.totalAmount),
           // Avoid expensive Set operations by only calculating them when needed
-          hasData: (hourStat.logs && hourStat.logs.length > 0) || 
-                  (productStat.logs && productStat.logs.length > 0)
+          hasData:
+            (hourStat.logs && hourStat.logs.length > 0) ||
+            (productStat.logs && productStat.logs.length > 0),
         };
       });
-      
+
       // Update versions
       lastHourStatsVersion = hourStatsVersion;
       lastProductStatsVersion = productStatsVersion;
-      
-      console.timeEnd('Calculate combined stats');
+
+      console.timeEnd("Calculate combined stats");
     }
   }
-  
+
   // Use the memoized value
   $: combinedMonthlyStats = lastCalculatedCombinedStats || [];
 
   // Initialize component
   onMount(async () => {
     // Add performance timing
-    console.time('Initial load');
-    
+    console.time("Initial load");
+
     await fetchLogs();
-    
+
     // Force a UI update after data is loaded
     monthlyHourStats = [...monthlyHourStats];
     monthlyProductStats = [...monthlyProductStats];
-    
-    console.timeEnd('Initial load');
+
+    console.timeEnd("Initial load");
   });
 </script>
 
@@ -1305,11 +1483,24 @@
             {/each}
           </select>
         </div>
+        
+        <!-- Invoice Status Filter - NEW -->
+        <div class="w-64">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Invoice Status</label>
+          <select
+            class="block w-full p-2 border border-gray-300 rounded-md"
+            bind:value={showInvoiced}
+          >
+            <option value="all">All Entries</option>
+            <option value="invoiced">Invoiced Only</option>
+            <option value="not-invoiced">Not Invoiced Only</option>
+          </select>
+        </div>
       </div>
 
       <!-- Month Summary - Hours Tab -->
       {#if activeTab === "hours"}
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div class="bg-blue-50 p-4 rounded-lg">
             <h4 class="text-sm font-medium text-gray-500">Total Logs</h4>
             <p class="text-2xl font-bold">
@@ -1334,6 +1525,16 @@
               {monthlyHourStats[selectedMonth].uniqueCustomers}
             </p>
           </div>
+          <!-- New Not Invoiced Card -->
+          <div class="bg-red-50 p-4 rounded-lg">
+            <h4 class="text-sm font-medium text-gray-500">Not Invoiced</h4>
+            <p class="text-xl font-bold text-red-600">
+              {monthlyHourStats[selectedMonth].notInvoicedHours} h
+            </p>
+            <p class="text-sm text-gray-500">
+              {monthlyHourStats[selectedMonth].notInvoicedAmount} kr
+            </p>
+          </div>
         </div>
 
         <!-- User Details (if showing filtered results) -->
@@ -1341,7 +1542,7 @@
           <div class="mb-6 bg-gray-100 p-4 rounded-lg">
             <h4 class="font-medium text-gray-800 mb-2">User: {selectedUser}</h4>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <span class="text-gray-500 text-sm">Logs:</span>
                 <span class="font-bold ml-2"
@@ -1363,6 +1564,14 @@
                   >{monthlyHourStats[selectedMonth].userStats[
                     selectedUser
                   ].totalAmount.toFixed(2)} kr</span
+                >
+              </div>
+              <!-- New: Not Invoiced Hours -->
+              <div>
+                <span class="text-gray-500 text-sm">Not Invoiced:</span>
+                <span class="font-bold ml-2 text-red-600"
+                  >{(monthlyHourStats[selectedMonth].userStats[selectedUser].totalHours -
+                    (monthlyHourStats[selectedMonth].userStats[selectedUser].invoicedHours || 0)).toFixed(2)} h</span
                 >
               </div>
             </div>
@@ -1399,6 +1608,11 @@
                     class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >User</th
                   >
+                  <!-- New: Invoiced Column -->
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >Invoiced</th
+                  >
                   <th
                     class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >Actions</th
@@ -1428,6 +1642,20 @@
                     <td class="px-6 py-4 whitespace-nowrap text-gray-500">
                       {log.user_name || "No user"}
                     </td>
+                    <!-- New: Invoiced Checkbox -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <input 
+                          type="checkbox" 
+                          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          checked={log.invoiced === true}
+                          on:change={() => toggleHourLogInvoiced(log.id, log.invoiced)}
+                        />
+                        <span class="ml-2 text-sm text-gray-700">
+                          {log.invoiced ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </td>
                     <td
                       class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
                     >
@@ -1448,6 +1676,8 @@
             <p class="text-gray-500">
               No hour logs found for this month{selectedUser
                 ? ` and user (${selectedUser})`
+                : ""}{showInvoiced !== "all" 
+                ? ` with invoice status: ${showInvoiced}`
                 : ""}.
             </p>
           </div>
@@ -1455,7 +1685,7 @@
 
         <!-- Month Summary - Products Tab -->
       {:else}
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div class="bg-indigo-50 p-4 rounded-lg">
             <h4 class="text-sm font-medium text-gray-500">Total Logs</h4>
             <p class="text-2xl font-bold">
@@ -1480,6 +1710,16 @@
               {monthlyProductStats[selectedMonth].uniqueProducts}
             </p>
           </div>
+          <!-- New Not Invoiced Card -->
+          <div class="bg-red-50 p-4 rounded-lg">
+            <h4 class="text-sm font-medium text-gray-500">Not Invoiced</h4>
+            <p class="text-xl font-bold text-red-600">
+              {monthlyProductStats[selectedMonth].notInvoicedQuantity} units
+            </p>
+            <p class="text-sm text-gray-500">
+              {monthlyProductStats[selectedMonth].notInvoicedAmount} kr
+            </p>
+          </div>
         </div>
 
         <!-- User Details (if showing filtered results) -->
@@ -1487,7 +1727,7 @@
           <div class="mb-6 bg-gray-100 p-4 rounded-lg">
             <h4 class="font-medium text-gray-800 mb-2">User: {selectedUser}</h4>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <span class="text-gray-500 text-sm">Logs:</span>
                 <span class="font-bold ml-2"
@@ -1508,6 +1748,14 @@
                   >{monthlyProductStats[selectedMonth].userStats[
                     selectedUser
                   ].totalAmount.toFixed(2)} kr</span
+                >
+              </div>
+              <!-- New: Not Invoiced Products -->
+              <div>
+                <span class="text-gray-500 text-sm">Not Invoiced:</span>
+                <span class="font-bold ml-2 text-red-600"
+                  >{monthlyProductStats[selectedMonth].userStats[selectedUser].totalQuantity -
+                    (monthlyProductStats[selectedMonth].userStats[selectedUser].invoicedQuantity || 0)} units</span
                 >
               </div>
             </div>
@@ -1544,6 +1792,11 @@
                     class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >User</th
                   >
+                  <!-- New: Invoiced Column -->
+                  <th
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >Invoiced</th
+                  >
                   <th
                     class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
                     >Actions</th
@@ -1571,6 +1824,20 @@
                     <td class="px-6 py-4 whitespace-nowrap text-gray-500">
                       {log.expand?.user?.name || log.user || "No user"}
                     </td>
+                    <!-- New: Invoiced Checkbox -->
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <input 
+                          type="checkbox" 
+                          class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          checked={log.invoiced === true}
+                          on:change={() => toggleProductLogInvoiced(log.id, log.invoiced)}
+                        />
+                        <span class="ml-2 text-sm text-gray-700">
+                          {log.invoiced ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </td>
                     <td
                       class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
                     >
@@ -1591,6 +1858,8 @@
             <p class="text-gray-500">
               No product logs found for this month{selectedUser
                 ? ` and user (${selectedUser})`
+                : ""}{showInvoiced !== "all" 
+                ? ` with invoice status: ${showInvoiced}`
                 : ""}.
             </p>
           </div>
@@ -1604,7 +1873,7 @@
         <h3 class="text-lg font-semibold mb-4">Monthly Overview</h3>
 
         <!-- Combined Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <!-- Total Logs -->
           <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
             <h4 class="text-sm font-medium text-gray-500">Total Logs</h4>
@@ -1656,8 +1925,6 @@
               )}
             </p>
           </div>
-
-          <!-- Total Amount -->
           <div class="bg-green-50 p-4 rounded-lg border border-green-100">
             <h4 class="text-sm font-medium text-gray-500">Total Amount</h4>
             <p class="text-2xl font-bold">
@@ -1681,6 +1948,33 @@
                 Products: {combinedMonthlyStats
                   .reduce((sum, month) => sum + month.productAmount, 0)
                   .toFixed(2)} kr
+              </span>
+            </div>
+          </div>
+          
+          <!-- Not Invoiced Amount - NEW -->
+          <div class="bg-red-50 p-4 rounded-lg border border-red-100">
+            <h4 class="text-sm font-medium text-gray-500">Not Invoiced</h4>
+            <p class="text-2xl font-bold text-red-600">
+              {combinedMonthlyStats
+                .reduce((sum, month) => sum + month.notInvoicedAmount, 0)
+                .toFixed(2)} kr
+            </p>
+            <div class="flex text-xs text-gray-500 mt-1">
+              <span class="flex items-center">
+                <span class="w-3 h-3 inline-block bg-blue-500 rounded-full mr-1"
+                ></span>
+                Hours: {combinedMonthlyStats
+                  .reduce((sum, month) => sum + parseFloat(month.notInvoicedHours || 0), 0)
+                  .toFixed(2)}
+              </span>
+              <span class="mx-2">|</span>
+              <span class="flex items-center">
+                <span
+                  class="w-3 h-3 inline-block bg-indigo-500 rounded-full mr-1"
+                ></span>
+                Products: {combinedMonthlyStats
+                  .reduce((sum, month) => sum + (month.notInvoicedQuantity || 0), 0)}
               </span>
             </div>
           </div>
@@ -1776,6 +2070,23 @@
                   <span>Customers: {stats.uniqueCustomers}</span>
                   <span>Users: {stats.uniqueUsers}</span>
                 </div>
+                
+                <!-- NEW: Invoice Status -->
+                <div class="mt-2 text-xs flex justify-between">
+                  <span class="text-green-600">
+                    Invoiced: {stats.invoicedLogCount || 0}
+                  </span>
+                  <span class="text-red-600">
+                    Not Invoiced: {stats.notInvoicedLogCount || 0}
+                  </span>
+                </div>
+                
+                <!-- NEW: Not Invoiced Amount -->
+                {#if stats.notInvoicedAmount > 0}
+                  <div class="mt-1 text-xs text-red-600 font-semibold">
+                    Not Invoiced: {stats.notInvoicedAmount.toFixed(2)} kr
+                  </div>
+                {/if}
               </div>
             </div>
           </div>

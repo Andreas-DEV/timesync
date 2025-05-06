@@ -1,9 +1,9 @@
 <script>
     import { onMount } from 'svelte';
-    import SimpleHourLog from '../lib/HourLog.svelte';
-    import CalendarHourLogList from './CalendarHourLogList.svelte';
-    import CustomerSettings from './CustomerSettings.svelte';
-    import CustomerAssignmentManager from './CustomerAssignmentManager.svelte';
+    import SimpleHourLog from './Logging/HourLog.svelte';
+    import CalendarHourLogList from './Logging/CalendarHourLogList.svelte';
+    import CustomerSettings from '../lib/Management/CustomerSettings.svelte';
+    import CustomerAssignmentManager from "../lib/Management/CustomerAssignmentManager.svelte"
     import { initializeUser } from './stores/userStore';
   
     let activeTab = 'manager'; // 'calendar' or 'settings'

@@ -6,8 +6,8 @@
   import Sidebar from '$lib/Sidebar.svelte';
   import CvrTjek from "$lib/CvrTjek.svelte";
   import Ansogninger from "$lib/Ansogninger.svelte";
-  import TimeLogging from "$lib/TimeLogging.svelte";
-  import Log from "$lib/Log.svelte";
+  import TimeLogging from "../../lib/Logging/TimeLogging.svelte";
+  import Log from "../../lib/Logging/Log.svelte";
   import Admin from "$lib/Admin.svelte";
 
   import Logo from "$lib/assets/logo.svg"

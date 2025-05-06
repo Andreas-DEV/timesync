@@ -1,11 +1,11 @@
 <script>
     import { onMount } from "svelte";
     import HourLogList from "./HourLogList.svelte";
-    import ProductLogButton from "./ProductLogButton.svelte";
-    import ProductLogsCalendar from "./ProductLogsCalendar.svelte";
+    import ProductLogButton from "./Logging/ProductLogButton.svelte";
+    import ProductLogsCalendar from "./Logging/ProductLogsCalendar.svelte";
     import ActivityDashboard from "./ActivityDashboard.svelte";
-    import HourLog from "./HourLog.svelte";
-    import UserManangement from "./UserManangement.svelte";
+    import HourLog from "./Logging/HourLog.svelte";
+    import UserManangement from "../lib/Management/UserManangement.svelte";
     import PocketBase from "pocketbase";
     const pb = new PocketBase("https://timesync.pockethost.io/");
 
