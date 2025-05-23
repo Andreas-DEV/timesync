@@ -100,13 +100,14 @@ export function exportProductLogsToExcel(logs, periodName, selectedUser) {
     processed.total_price = log.total_price.toFixed(2);
     
     return {
-      'Date': processed.created,
-      'Customer': log.expand?.kunder?.navn || log.kunder || '',
-      'Product': log.expand?.product?.productName || log.product || '',
-      'Quantity': processed.quantity,
-      'Total Price': processed.total_price,
-      'User': log.expand?.user?.name || log.user || ''
-    };
+  'Date': processed.created,
+  'Customer': log.expand?.kunder?.navn || log.kunder || '',
+  'Product': log.expand?.product?.productName || log.product || '',
+  'Quantity': processed.quantity,
+  'Total Price': processed.total_price,
+  'Comment': log.comment || '',
+  'User': log.expand?.user?.name || log.user || ''
+};
   });
   
   // Create worksheet
@@ -114,13 +115,14 @@ export function exportProductLogsToExcel(logs, periodName, selectedUser) {
   
   // Set column widths
   const colWidths = [
-    { wch: 12 }, // Date
-    { wch: 25 }, // Customer
-    { wch: 25 }, // Product
-    { wch: 10 }, // Quantity
-    { wch: 12 }, // Total Price
-    { wch: 15 }  // User
-  ];
+  { wch: 12 }, // Date
+  { wch: 25 }, // Customer
+  { wch: 25 }, // Product
+  { wch: 10 }, // Quantity
+  { wch: 12 }, // Total Price
+  { wch: 30 }, // Comment
+  { wch: 15 }  // User
+];
   ws['!cols'] = colWidths;
   
   // Build filename
@@ -159,15 +161,16 @@ export function exportCombinedLogsToExcel(hourLogs, productLogs, filename, selec
   
   // Process product logs data
   const processedProductLogs = productLogs.map(log => {
-    return {
-      'Date': formatDate(log.created),
-      'Customer': log.expand?.kunder?.navn || log.kunder || '',
-      'Product': log.expand?.product?.productName || log.product || '',
-      'Quantity': log.quantity,
-      'Total Price': log.total_price.toFixed(2),
-      'User': log.expand?.user?.name || log.user || ''
-    };
-  });
+  return {
+    'Date': formatDate(log.created),
+    'Customer': log.expand?.kunder?.navn || log.kunder || '',
+    'Product': log.expand?.product?.productName || log.product || '',
+    'Quantity': log.quantity,
+    'Total Price': log.total_price.toFixed(2),
+    'Comment': log.comment || '',
+    'User': log.expand?.user?.name || log.user || ''
+  };
+});
   
   // Generate summary data
   const hourTotal = hourLogs.reduce((sum, log) => sum + log.price, 0);
@@ -242,13 +245,14 @@ export function exportCombinedLogsToExcel(hourLogs, productLogs, filename, selec
   
   // Set column widths for products
   const productColWidths = [
-    { wch: 12 }, // Date
-    { wch: 25 }, // Customer
-    { wch: 25 }, // Product
-    { wch: 10 }, // Quantity
-    { wch: 12 }, // Total Price
-    { wch: 15 }  // User
-  ];
+  { wch: 12 }, // Date
+  { wch: 25 }, // Customer
+  { wch: 25 }, // Product
+  { wch: 10 }, // Quantity
+  { wch: 12 }, // Total Price
+  { wch: 30 }, // Comment
+  { wch: 15 }  // User
+];
   wsProducts['!cols'] = productColWidths;
   
   // Add all sheets to workbook

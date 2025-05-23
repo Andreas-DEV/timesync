@@ -777,25 +777,7 @@ onMount(() => {
                     <div class="text-xl font-bold">{stats.totalAmount} kr</div>
                   </div>
                   
-                  <!-- Show top products if exists -->
-                 <!--  {#if stats.logCount > 0}
-                    <div class="col-span-2 mt-2 border-t pt-2">
-                      <div class="text-sm text-gray-500">Top Products</div>
-                      <div class="text-sm mt-1">
-                        {#each Object.entries(stats.productStats).slice(0, 2) as [product, data], i}
-                          <div class="flex justify-between items-center mb-1 {i > 0 ? 'text-gray-500' : ''}">
-                            <span class="truncate">{product}</span>
-                            <span class="font-medium">{data.totalQuantity} pcs</span>
-                          </div>
-                        {/each}
-                        {#if Object.keys(stats.productStats).length > 2}
-                          <div class="text-xs text-gray-500 text-right">
-                            +{Object.keys(stats.productStats).length - 2} more
-                          </div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/if} -->
+                
                 </div>
               </div>
             </div>

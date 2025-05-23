@@ -13,6 +13,7 @@
   let selectedKunde = null;
   let selectedProduct = null;
   let quantity = 1;
+  let comment = ''; // New comment field
   let isLoading = false;
   let isLoadingData = true;
   let successMessage = '';
@@ -92,6 +93,7 @@
     selectedKunde = null;
     selectedProduct = null;
     quantity = 1;
+    comment = ''; // Reset comment field
     successMessage = '';
     errorMessage = '';
   }
@@ -130,6 +132,7 @@
         quantity: quantity,
         unit_price: unitPrice, // Store the actual unit price used
         total_price: totalPrice,
+        comment: comment, // Include the comment field
         created: new Date().toISOString(),
       };
       
@@ -272,6 +275,19 @@
               class="w-full p-2 border rounded-md"
               disabled={!selectedProduct}
             />
+          </div>
+
+          <!-- Comment input -->
+          <div class="mb-4">
+            <label for="comment" class="block text-sm font-medium text-gray-700 mb-1">Comment (Optional)</label>
+            <textarea 
+              id="comment" 
+              bind:value={comment} 
+              rows="3"
+              placeholder="Add any additional notes or comments..."
+              class="w-full p-2 border rounded-md resize-vertical"
+              disabled={!selectedProduct}
+            ></textarea>
           </div>
 
           <!-- Pricing information for tiered products -->
