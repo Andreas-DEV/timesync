@@ -125,7 +125,7 @@
 </script>
 
 <svelte:head>
-	<title>Register Absence - Select Worker</title>
+	
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50 py-8">
