@@ -7,18 +7,34 @@
     export let title = "Dashboard";
     export let logo = svg;
 
-    import cvrIcon from "$lib/assets/icons/cvrsearch.png";
-
     let isLoggingOut = false;
     let buttonWidth = 100;
     let isMobile = false;
     let showMobileMenu = false;
+    let openDropdowns = {}; // Track which dropdowns are open
     
     export let siteLinks = [
-        { id: "dashboard", label: "Dashboard", icon: "home" },
-        { id: "logging", label: "Arbejdstid", icon: "clock" },
-        { id: "cvr", label: "CVR Tjek", icon: "search" },
-        { id: "ansogninger", label: "Ansøgninger", icon: "applications" },
+        { id: "dashboard", label: "Dashboard" },
+        { id: "logging", label: "Arbejdstid" },
+        { id: "cvr", label: "CVR Tjek" },
+        { id: "ansogninger", label: "Ansøgninger" },
+        { 
+            id: "admin", 
+            label: "Admin",
+            isDropdown: true,
+            subItems: [
+                { id: "admin-activity", label: "Activity Dashboard" },
+                { 
+                    id: "admin-fravaer", 
+                    label: "Fravær",
+                    isDropdown: true,
+                    subItems: [
+                        { id: "admin-fravaer-dashboard", label: "Dashboard" },
+                        { id: "admin-fravaer-requests", label: "Requests" }
+                    ]
+                }
+            ]
+        }
     ];
     
     export let activeSiteId = "cvr";
@@ -27,12 +43,69 @@
 
     // Function to update page title
     function updatePageTitle(siteId) {
-        const site = siteLinks.find(s => s.id === siteId);
+        const site = findSiteById(siteId);
         if (site) {
             document.title = `TIMESYNC - ${site.label}`;
         } else {
             document.title = "TIMESYNC";
         }
+    }
+
+    // Helper function to find a site by ID (including nested sub-items)
+    function findSiteById(siteId) {
+        for (const site of siteLinks) {
+            if (site.id === siteId) return site;
+            if (site.subItems) {
+                const subItem = site.subItems.find(sub => sub.id === siteId);
+                if (subItem) return subItem;
+                // Check nested sub-items
+                for (const subItem of site.subItems) {
+                    if (subItem.subItems) {
+                        const nestedSubItem = subItem.subItems.find(nested => nested.id === siteId);
+                        if (nestedSubItem) return nestedSubItem;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // Check if a site ID belongs to a dropdown's sub-items (including nested)
+    function getParentDropdown(siteId) {
+        for (const site of siteLinks) {
+            if (site.subItems) {
+                // Check direct sub-items
+                if (site.subItems.some(sub => sub.id === siteId)) {
+                    return site.id;
+                }
+                // Check nested sub-items
+                for (const subItem of site.subItems) {
+                    if (subItem.subItems && subItem.subItems.some(nested => nested.id === siteId)) {
+                        return subItem.id;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // Get all parent dropdowns for nested items
+    function getAllParentDropdowns(siteId) {
+        const parents = [];
+        for (const site of siteLinks) {
+            if (site.subItems) {
+                for (const subItem of site.subItems) {
+                    if (subItem.subItems && subItem.subItems.some(nested => nested.id === siteId)) {
+                        parents.push(site.id, subItem.id);
+                        break;
+                    }
+                }
+                if (parents.length === 0 && site.subItems.some(sub => sub.id === siteId)) {
+                    parents.push(site.id);
+                }
+            }
+        }
+        return parents;
     }
 
     onMount(() => {
@@ -50,6 +123,12 @@
         if (savedActiveTab) {
             activeSiteId = savedActiveTab;
             dispatch("siteChange", { siteId: activeSiteId });
+            
+            // Auto-open dropdown(s) if active item is a sub-item or nested sub-item
+            const parentDropdowns = getAllParentDropdowns(activeSiteId);
+            parentDropdowns.forEach(parentId => {
+                openDropdowns[parentId] = true;
+            });
         }
         
         // Update page title on mount
@@ -59,6 +138,16 @@
     });
 
     function selectSite(siteId) {
+        const site = findSiteById(siteId);
+        
+        // If it's a dropdown parent, toggle dropdown instead of selecting
+        if (site && site.isDropdown) {
+            toggleDropdown(siteId);
+            // Don't set activeSiteId for dropdown parents
+            return;
+        }
+        
+        // Only set activeSiteId for actual navigable pages (non-dropdown items)
         activeSiteId = siteId;
         localStorage.setItem('timesync_active_tab', siteId);
         dispatch("siteChange", { siteId });
@@ -69,6 +158,38 @@
         if (isMobile) {
             showMobileMenu = false;
         }
+    }
+
+    // Helper function to check if any child of a dropdown is active
+    function hasActiveChild(item) {
+        if (!item.subItems) return false;
+        
+        for (const subItem of item.subItems) {
+            if (subItem.id === activeSiteId) return true;
+            if (subItem.subItems && hasActiveChild(subItem)) return true;
+        }
+        return false;
+    }
+
+    // Helper function to check if this specific item should show as active
+    function isItemActive(item) {
+        // Direct match for non-dropdown items
+        if (!item.isDropdown && item.id === activeSiteId) {
+            return true;
+        }
+        
+        // For dropdown items, they're "active" if any of their children are active
+        if (item.isDropdown && hasActiveChild(item)) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    function toggleDropdown(dropdownId) {
+        openDropdowns[dropdownId] = !openDropdowns[dropdownId];
+        // Trigger reactivity
+        openDropdowns = { ...openDropdowns };
     }
 
     function toggleSidebar() {
@@ -89,35 +210,6 @@
             isLoggingOut = false;
         }
     }
-
-    const icons = {
-        home: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>`,
-        clock: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-               </svg>`,
-        search: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-3-3v6" />
-                </svg>`,
-        applications: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8V3" />
-                     </svg>`,
-        "chevron-right": `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                       </svg>`,
-        menu: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-             </svg>`,
-        close: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>`,
-        logout: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-               </svg>`,
-    };
 </script>
 
 <!-- Mobile backdrop -->
@@ -135,7 +227,7 @@
         on:click={toggleSidebar}
         aria-label="Toggle menu"
     >
-        {@html showMobileMenu ? icons.close : icons.menu}
+        {showMobileMenu ? '✕' : '☰'}
     </button>
 {/if}
 
@@ -162,27 +254,28 @@
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 py-6 px-4 relative">
+    <nav class="flex-1 py-6 px-4 relative overflow-y-auto">
         <ul class="space-y-2">
             {#each siteLinks as site}
                 <li>
+                    <!-- Main navigation item -->
                     <button
                         class="group relative w-full flex items-center px-4 py-3 text-left rounded-lg transition-all duration-200 hover:scale-105 focus:outline-none cursor-pointer
-                        {activeSiteId === site.id
+                        {isItemActive(site)
                             ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
                             : 'hover:bg-gray-700 hover:bg-opacity-50 text-gray-300 hover:text-white'
                         }"
                         on:click={() => selectSite(site.id)}
                         aria-label={site.label}
                     >
-                        <!-- Active indicator -->
-                        {#if activeSiteId === site.id}
+                        <!-- Active indicator - only show for actually active items -->
+                        {#if isItemActive(site)}
                             <div class="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-white rounded-r-full"></div>
                         {/if}
                         
                         <!-- Letter Badge -->
                         <div class="flex items-center justify-center w-10 h-10 rounded-lg mr-3 transition-all duration-200 font-bold text-sm
-                            {activeSiteId === site.id 
+                            {isItemActive(site)
                                 ? 'bg-gradient-to-br from-white to-gray-200 text-gray-800 shadow-lg' 
                                 : 'bg-gradient-to-br from-gray-600 to-gray-700 text-white group-hover:from-gray-500 group-hover:to-gray-600'
                             }">
@@ -191,15 +284,105 @@
                         
                         <div class="flex-1">
                             <span class="font-medium">{site.label}</span>
-                            {#if activeSiteId === site.id}
+                            {#if isItemActive(site)}
                                 <div class="text-xs opacity-75">Active</div>
                             {/if}
                         </div>
                         
-                        <div class="transition-all duration-200 {activeSiteId === site.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}">
-                            {@html icons["chevron-right"]}
-                        </div>
+                        <!-- Only show arrow for dropdown items -->
+                        {#if site.isDropdown}
+                            <div class="transition-all duration-200 transform {openDropdowns[site.id] ? 'rotate-90' : ''}">
+                                ↱
+                            </div>
+                        {/if}
                     </button>
+
+                    <!-- Dropdown sub-items -->
+                    {#if site.isDropdown && openDropdowns[site.id]}
+                        <ul class="mt-2 ml-4 space-y-1 border-l-2 border-gray-600 pl-4">
+                            {#each site.subItems as subItem}
+                                <li>
+                                    <button
+                                        class="group relative w-full flex items-center px-3 py-2 text-left rounded-lg transition-all duration-200 hover:scale-105 focus:outline-none cursor-pointer text-sm
+                                        {isItemActive(subItem)
+                                            ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md'
+                                            : 'hover:bg-gray-700 hover:bg-opacity-50 text-gray-400 hover:text-white'
+                                        }"
+                                        on:click={() => selectSite(subItem.id)}
+                                        aria-label={subItem.label}
+                                    >
+                                        <!-- Sub-item active indicator -->
+                                        {#if isItemActive(subItem)}
+                                            <div class="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white rounded-r-full"></div>
+                                        {/if}
+                                        
+                                        <!-- Sub-item letter badge -->
+                                        <div class="flex items-center justify-center w-8 h-8 rounded-md mr-3 transition-all duration-200 font-semibold text-xs
+                                            {isItemActive(subItem)
+                                                ? 'bg-gradient-to-br from-white to-gray-200 text-gray-800 shadow-md' 
+                                                : 'bg-gradient-to-br from-gray-600 to-gray-700 text-white group-hover:from-gray-500 group-hover:to-gray-600'
+                                            }">
+                                            {subItem.label.charAt(0)}
+                                        </div>
+                                        
+                                        <div class="flex-1">
+                                            <span class="font-medium">{subItem.label}</span>
+                                            {#if isItemActive(subItem)}
+                                                <div class="text-xs opacity-75">Active</div>
+                                            {/if}
+                                        </div>
+
+                                        <!-- Only show arrow for dropdown sub-items -->
+                                        {#if subItem.isDropdown}
+                                            <div class="transition-all duration-200 transform {openDropdowns[subItem.id] ? 'rotate-90' : ''}">
+                                                ↱
+                                            </div>
+                                        {/if}
+                                    </button>
+
+                                    <!-- Nested dropdown sub-items -->
+                                    {#if subItem.isDropdown && openDropdowns[subItem.id]}
+                                        <ul class="mt-1 ml-6 space-y-1 border-l-2 border-gray-500 pl-3">
+                                            {#each subItem.subItems as nestedItem}
+                                                <li>
+                                                    <button
+                                                        class="group relative w-full flex items-center px-2 py-1.5 text-left rounded-md transition-all duration-200 hover:scale-105 focus:outline-none cursor-pointer text-xs
+                                                        {activeSiteId === nestedItem.id
+                                                            ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white shadow-sm'
+                                                            : 'hover:bg-gray-700 hover:bg-opacity-50 text-gray-500 hover:text-white'
+                                                        }"
+                                                        on:click={() => selectSite(nestedItem.id)}
+                                                        aria-label={nestedItem.label}
+                                                    >
+                                                        <!-- Nested item active indicator -->
+                                                        {#if activeSiteId === nestedItem.id}
+                                                            <div class="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-4 bg-white rounded-r-full"></div>
+                                                        {/if}
+                                                        
+                                                        <!-- Nested item dot indicator -->
+                                                        <div class="flex items-center justify-center w-6 h-6 rounded-sm mr-2 transition-all duration-200 font-bold text-xs
+                                                            {activeSiteId === nestedItem.id 
+                                                                ? 'bg-gradient-to-br from-white to-gray-200 text-gray-800 shadow-sm' 
+                                                                : 'bg-gradient-to-br from-gray-700 to-gray-800 text-white group-hover:from-gray-600 group-hover:to-gray-700'
+                                                            }">
+                                                            {nestedItem.label.charAt(0)}
+                                                        </div>
+                                                        
+                                                        <div class="flex-1">
+                                                            <span class="font-medium">{nestedItem.label}</span>
+                                                            {#if activeSiteId === nestedItem.id}
+                                                                <div class="text-xs opacity-75">Active</div>
+                                                            {/if}
+                                                        </div>
+                                                    </button>
+                                                </li>
+                                            {/each}
+                                        </ul>
+                                    {/if}
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
                 </li>
             {/each}
         </ul>
@@ -222,7 +405,7 @@
             {:else}
                 <div class="flex items-center">
                     <div class="mr-2">
-                        {@html icons.logout}
+                        ⏻
                     </div>
                     <span>Sign Out</span>
                 </div>
