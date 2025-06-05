@@ -23,8 +23,11 @@
   let allUsers = [];
   let monthlyHourStats = [];
   let monthlyProductStats = [];
+  let allCustomers = [];
   let useExcelFormat = true; // Excel by default, can be toggled to CSV
   let activeTab = "hours"; // 'hours' or 'products'
+
+  let selectedCustomer = null;
 
   let showEditModal = false;
   let editingLog = null;
@@ -33,28 +36,28 @@
 
   // Edit form data
   let editFormData = {
-  // Hour log fields
-  dato: "",
-  kunde_navn: "",
-  totalsum: 0,
-  price: 0,
-  kommentar: "",
-  user_name: "",
-  invoiced: false,
-  startTime: "",
-  endTime: "",
-  
-  // Product log fields
-  created: "",
-  kunder: "",
-  product: "",
-  quantity: 0,
-  total_price: 0,
-  comment: "",
-  user: "",
-  // NEW: Add unit price for calculations
-  unit_price: 0,
-};
+    // Hour log fields
+    dato: "",
+    kunde_navn: "",
+    totalsum: 0,
+    price: 0,
+    kommentar: "",
+    user_name: "",
+    invoiced: false,
+    startTime: "",
+    endTime: "",
+
+    // Product log fields
+    created: "",
+    kunder: "",
+    product: "",
+    quantity: 0,
+    total_price: 0,
+    comment: "",
+    user: "",
+    // NEW: Add unit price for calculations
+    unit_price: 0,
+  };
 
   // Month names
   const monthNames = [
@@ -150,40 +153,40 @@
 
   // 2. ADD HELPER FUNCTIONS (after the convertMinutesToDecimal function)
   function calculateTotalHours(startTime, endTime) {
-  if (!startTime || !endTime) {
-    console.log("Missing start or end time:", { startTime, endTime });
-    return 0;
-  }
-  
-  try {
-    const [startHour, startMin] = startTime.split(':').map(Number);
-    const [endHour, endMin] = endTime.split(':').map(Number);
-    
-    console.log("Parsing times:", { startHour, startMin, endHour, endMin });
-    
-    const startTotalMinutes = startHour * 60 + startMin;
-    const endTotalMinutes = endHour * 60 + endMin;
-    
-    // Handle case where work spans midnight (end time is next day)
-    let totalMinutes;
-    if (endTotalMinutes >= startTotalMinutes) {
-      totalMinutes = endTotalMinutes - startTotalMinutes;
-    } else {
-      // Work spans midnight
-      totalMinutes = (24 * 60) - startTotalMinutes + endTotalMinutes;
+    if (!startTime || !endTime) {
+      console.log("Missing start or end time:", { startTime, endTime });
+      return 0;
     }
-    
-    console.log("Total minutes:", totalMinutes);
-    
-    const decimalHours = convertMinutesToDecimal(totalMinutes);
-    console.log("Decimal hours:", decimalHours);
-    
-    return decimalHours;
-  } catch (error) {
-    console.error("Error calculating hours:", error);
-    return 0;
+
+    try {
+      const [startHour, startMin] = startTime.split(":").map(Number);
+      const [endHour, endMin] = endTime.split(":").map(Number);
+
+      console.log("Parsing times:", { startHour, startMin, endHour, endMin });
+
+      const startTotalMinutes = startHour * 60 + startMin;
+      const endTotalMinutes = endHour * 60 + endMin;
+
+      // Handle case where work spans midnight (end time is next day)
+      let totalMinutes;
+      if (endTotalMinutes >= startTotalMinutes) {
+        totalMinutes = endTotalMinutes - startTotalMinutes;
+      } else {
+        // Work spans midnight
+        totalMinutes = 24 * 60 - startTotalMinutes + endTotalMinutes;
+      }
+
+      console.log("Total minutes:", totalMinutes);
+
+      const decimalHours = convertMinutesToDecimal(totalMinutes);
+      console.log("Decimal hours:", decimalHours);
+
+      return decimalHours;
+    } catch (error) {
+      console.error("Error calculating hours:", error);
+      return 0;
+    }
   }
-}
 
   function decimalHoursToTime(decimalHours) {
     const totalMinutes = Math.round(decimalHours * 60);
@@ -288,82 +291,94 @@
   }
 
   function editProductLog(log) {
-  console.log("Editing product log:", log);
-  
-  editType = "product";
-  editingLog = log;
-  
-  // Handle expanded vs non-expanded data more robustly
-  let customerName = "";
-  let productName = "";
-  let userName = "";
-  
-  // Try multiple ways to get customer name
-  if (log.expand?.kunder?.navn) {
-    customerName = log.expand.kunder.navn;
-  } else if (log.expand?.kunder?.name) {
-    customerName = log.expand.kunder.name;
-  } else if (log.kunder) {
-    customerName = log.kunder;
-  } else if (log.customer) {
-    customerName = log.customer;
+    console.log("Editing product log:", log);
+
+    editType = "product";
+    editingLog = log;
+
+    // Handle expanded vs non-expanded data more robustly
+    let customerName = "";
+    let productName = "";
+    let userName = "";
+
+    if (log.invoiced === true) {
+    showErrorToast("Cannot edit invoiced logs");
+    return;
   }
-  
-  // Try multiple ways to get product name
-  if (log.expand?.product?.productName) {
-    productName = log.expand.product.productName;
-  } else if (log.expand?.product?.name) {
-    productName = log.expand.product.name;
-  } else if (log.product) {
-    productName = log.product;
-  } else if (log.productName) {
-    productName = log.productName;
+
+    // Try multiple ways to get customer name
+    if (log.expand?.kunder?.navn) {
+      customerName = log.expand.kunder.navn;
+    } else if (log.expand?.kunder?.name) {
+      customerName = log.expand.kunder.name;
+    } else if (log.kunder) {
+      customerName = log.kunder;
+    } else if (log.customer) {
+      customerName = log.customer;
+    }
+
+    // Try multiple ways to get product name
+    if (log.expand?.product?.productName) {
+      productName = log.expand.product.productName;
+    } else if (log.expand?.product?.name) {
+      productName = log.expand.product.name;
+    } else if (log.product) {
+      productName = log.product;
+    } else if (log.productName) {
+      productName = log.productName;
+    }
+
+    // Try multiple ways to get user name
+    if (log.expand?.user?.name) {
+      userName = log.expand.user.name;
+    } else if (log.expand?.user?.username) {
+      userName = log.expand.user.username;
+    } else if (log.user) {
+      userName = log.user;
+    } else if (log.user_name) {
+      userName = log.user_name;
+    }
+
+    // Calculate unit price from existing data
+    const quantity = log.quantity || 0;
+    const totalPrice = log.total_price || 0;
+    const unitPrice = quantity > 0 ? totalPrice / quantity : 0;
+
+    console.log("Extracted data:", {
+      customerName,
+      productName,
+      userName,
+      quantity,
+      totalPrice,
+      unitPrice,
+    });
+
+    editFormData = {
+      // Clear hour log fields
+      dato: "",
+      kunde_navn: "",
+      totalsum: 0,
+      kommentar: "",
+      user_name: "",
+      startTime: "",
+      endTime: "",
+
+      // Set product log fields
+      created: log.created ? log.created.split("T")[0] : "",
+      kunder: customerName,
+      product: productName,
+      quantity: quantity,
+      total_price: totalPrice,
+      unit_price: unitPrice,
+      comment: log.comment || "",
+      user: userName,
+      price: log.price || 0,
+      invoiced: log.invoiced || false,
+    };
+
+    console.log("Edit form data set:", editFormData);
+    showEditModal = true;
   }
-  
-  // Try multiple ways to get user name
-  if (log.expand?.user?.name) {
-    userName = log.expand.user.name;
-  } else if (log.expand?.user?.username) {
-    userName = log.expand.user.username;
-  } else if (log.user) {
-    userName = log.user;
-  } else if (log.user_name) {
-    userName = log.user_name;
-  }
-  
-  // Calculate unit price from existing data
-  const quantity = log.quantity || 0;
-  const totalPrice = log.total_price || 0;
-  const unitPrice = quantity > 0 ? totalPrice / quantity : 0;
-  
-  console.log("Extracted data:", { customerName, productName, userName, quantity, totalPrice, unitPrice });
-  
-  editFormData = {
-    // Clear hour log fields
-    dato: "",
-    kunde_navn: "",
-    totalsum: 0,
-    kommentar: "",
-    user_name: "",
-    startTime: "",
-    endTime: "",
-    
-    // Set product log fields
-    created: log.created ? log.created.split('T')[0] : "",
-    kunder: customerName,
-    product: productName,
-    quantity: quantity,
-    total_price: totalPrice,
-    unit_price: unitPrice,
-    comment: log.comment || "",
-    user: userName,
-    price: log.price || 0,
-    invoiced: log.invoiced || false,
-  };
-  
-  console.log("Edit form data set:", editFormData);
-  showEditModal = true;
-}
 
   // Calculate monthly statistics for product logs
   function calculateMonthlyProductStats(logsData) {
@@ -642,6 +657,24 @@
         const uniqueUsers = [...new Set([...hourLogUsers, ...productLogUsers])];
         allUsers = uniqueUsers.map((user) => ({ name: user || "Unknown" }));
 
+        // Extract unique customers from both types of logs
+        const hourLogCustomers = [
+          ...new Set(hourLogs.map((log) => log.kunde_navn).filter(Boolean)),
+        ];
+        const productLogCustomers = [
+          ...new Set(
+            productLogs
+              .map((log) => log.expand?.kunder?.navn || log.kunder)
+              .filter(Boolean),
+          ),
+        ];
+
+        // Combine unique customers from both logs
+        const uniqueCustomers = [
+          ...new Set([...hourLogCustomers, ...productLogCustomers]),
+        ];
+        allCustomers = uniqueCustomers.map((customer) => ({ name: customer }));
+
         console.timeEnd("Process data");
         isLoading = false;
       }, 10); // Small delay to allow UI to update
@@ -720,13 +753,16 @@
     const monthMatch =
       selectedMonth !== null ? logDate.getMonth() === selectedMonth : true;
     const userMatch = selectedUser ? log.user_name === selectedUser : true;
+    const customerMatch = selectedCustomer
+      ? log.kunde_navn === selectedCustomer
+      : true;
     const invoiceMatch =
       showInvoiced === "all"
         ? true
         : showInvoiced === "invoiced"
           ? log.invoiced === true
           : log.invoiced !== true;
-    return monthMatch && userMatch && invoiceMatch;
+    return monthMatch && userMatch && customerMatch && invoiceMatch;
   });
 
   $: filteredProductLogs = productLogs.filter((log) => {
@@ -736,13 +772,16 @@
     const userMatch = selectedUser
       ? (log.expand?.user?.name || log.user) === selectedUser
       : true;
+    const customerMatch = selectedCustomer
+      ? (log.expand?.kunder?.navn || log.kunder) === selectedCustomer
+      : true;
     const invoiceMatch =
       showInvoiced === "all"
         ? true
         : showInvoiced === "invoiced"
           ? log.invoiced === true
           : log.invoiced !== true;
-    return monthMatch && userMatch && invoiceMatch;
+    return monthMatch && userMatch && customerMatch && invoiceMatch;
   });
 
   // Format date for display
@@ -827,114 +866,130 @@
     deleteType = "";
   }
 
- 
-
   function editHourLog(log) {
-  editType = "hour";
-  editingLog = log;
-  
-  // Try to extract start and end times if they exist in the log
-  let startTime = "09:00";
-  let endTime = "17:00";
-  
-  // If the log has start/end time fields, use those
-  if (log.startTime && log.endTime) {
-    startTime = log.startTime;
-    endTime = log.endTime;
-  } else {
-    // Estimate times based on total hours
-    const totalHours = log.totalsum || 0;
-    if (totalHours > 0) {
-      const startHour = 9;
-      const endDecimal = startHour + totalHours;
-      const endHour = Math.floor(endDecimal);
-      const endMin = Math.round((endDecimal - endHour) * 60);
-      
-      startTime = `${startHour.toString().padStart(2, '0')}:00`;
-      endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
+    editType = "hour";
+    editingLog = log;
+
+    // Try to extract start and end times if they exist in the log
+    let startTime = "09:00";
+    let endTime = "17:00";
+
+    if (log.invoiced === true) {
+    showErrorToast("Cannot edit invoiced logs");
+    return;
+  }
+
+    // If the log has start/end time fields, use those
+    if (log.startTime && log.endTime) {
+      startTime = log.startTime;
+      endTime = log.endTime;
+    } else {
+      // Estimate times based on total hours
+      const totalHours = log.totalsum || 0;
+      if (totalHours > 0) {
+        const startHour = 9;
+        const endDecimal = startHour + totalHours;
+        const endHour = Math.floor(endDecimal);
+        const endMin = Math.round((endDecimal - endHour) * 60);
+
+        startTime = `${startHour.toString().padStart(2, "0")}:00`;
+        endTime = `${endHour.toString().padStart(2, "0")}:${endMin.toString().padStart(2, "0")}`;
+      }
+    }
+
+    // Create a new object to trigger reactivity
+    editFormData = {
+      dato: log.dato.split("T")[0],
+      kunde_navn: log.kunde_navn || "",
+      totalsum: log.totalsum || 0,
+      price: log.price || 0,
+      kommentar: log.kommentar || "",
+      user_name: log.user_name || "",
+      invoiced: log.invoiced || false,
+      startTime: startTime,
+      endTime: endTime,
+    };
+
+    showEditModal = true;
+
+    // Force calculation after a short delay to ensure DOM is ready
+    setTimeout(() => {
+      if (editFormData.startTime && editFormData.endTime) {
+        const calculatedHours = calculateTotalHours(
+          editFormData.startTime,
+          editFormData.endTime,
+        );
+        editFormData = { ...editFormData, totalsum: calculatedHours };
+      }
+    }, 100);
+  }
+
+  function handleStartTimeChange(event) {
+    editFormData.startTime = event.target.value;
+    updateTotalHours();
+  }
+
+  function handleEndTimeChange(event) {
+    editFormData.endTime = event.target.value;
+    updateTotalHours();
+  }
+
+  function updateTotalHours() {
+    if (editType === "hour" && editFormData.startTime && editFormData.endTime) {
+      const calculatedHours = calculateTotalHours(
+        editFormData.startTime,
+        editFormData.endTime,
+      );
+      console.log(
+        `Updating total hours: ${editFormData.startTime} to ${editFormData.endTime} = ${calculatedHours}`,
+      );
+      editFormData.totalsum = calculatedHours;
+      // Force reactivity by reassigning the object
+      editFormData = { ...editFormData };
     }
   }
-  
-  // Create a new object to trigger reactivity
-  editFormData = {
-    dato: log.dato.split('T')[0],
-    kunde_navn: log.kunde_navn || "",
-    totalsum: log.totalsum || 0,
-    price: log.price || 0,
-    kommentar: log.kommentar || "",
-    user_name: log.user_name || "",
-    invoiced: log.invoiced || false,
-    startTime: startTime,
-    endTime: endTime,
-  };
-  
-  showEditModal = true;
-  
-  // Force calculation after a short delay to ensure DOM is ready
-  setTimeout(() => {
-    if (editFormData.startTime && editFormData.endTime) {
-      const calculatedHours = calculateTotalHours(editFormData.startTime, editFormData.endTime);
-      editFormData = { ...editFormData, totalsum: calculatedHours };
+
+  function handleQuantityChange(event) {
+    const newQuantity = parseInt(event.target.value) || 0;
+    console.log("Quantity changed to:", newQuantity);
+    editFormData.quantity = newQuantity;
+    updateTotalPrice();
+  }
+
+  function handleUnitPriceChange(event) {
+    const newUnitPrice = parseFloat(event.target.value) || 0;
+    console.log("Unit price changed to:", newUnitPrice);
+    editFormData.unit_price = newUnitPrice;
+    updateTotalPrice();
+  }
+
+  function handleTotalPriceChange(event) {
+    const newTotalPrice = parseFloat(event.target.value) || 0;
+    console.log("Total price manually changed to:", newTotalPrice);
+    editFormData.total_price = newTotalPrice;
+
+    // Calculate unit price from total price
+    if (editFormData.quantity > 0) {
+      editFormData.unit_price = newTotalPrice / editFormData.quantity;
+      editFormData = { ...editFormData }; // Force reactivity
     }
-  }, 100);
-}
-
-function handleStartTimeChange(event) {
-  editFormData.startTime = event.target.value;
-  updateTotalHours();
-}
-
-function handleEndTimeChange(event) {
-  editFormData.endTime = event.target.value;
-  updateTotalHours();
-}
-
-function updateTotalHours() {
-  if (editType === "hour" && editFormData.startTime && editFormData.endTime) {
-    const calculatedHours = calculateTotalHours(editFormData.startTime, editFormData.endTime);
-    console.log(`Updating total hours: ${editFormData.startTime} to ${editFormData.endTime} = ${calculatedHours}`);
-    editFormData.totalsum = calculatedHours;
-    // Force reactivity by reassigning the object
-    editFormData = { ...editFormData };
   }
-}
 
-function handleQuantityChange(event) {
-  const newQuantity = parseInt(event.target.value) || 0;
-  console.log("Quantity changed to:", newQuantity);
-  editFormData.quantity = newQuantity;
-  updateTotalPrice();
-}
-
-function handleUnitPriceChange(event) {
-  const newUnitPrice = parseFloat(event.target.value) || 0;
-  console.log("Unit price changed to:", newUnitPrice);
-  editFormData.unit_price = newUnitPrice;
-  updateTotalPrice();
-}
-
-function handleTotalPriceChange(event) {
-  const newTotalPrice = parseFloat(event.target.value) || 0;
-  console.log("Total price manually changed to:", newTotalPrice);
-  editFormData.total_price = newTotalPrice;
-  
-  // Calculate unit price from total price
-  if (editFormData.quantity > 0) {
-    editFormData.unit_price = newTotalPrice / editFormData.quantity;
-    editFormData = { ...editFormData }; // Force reactivity
+  function updateTotalPrice() {
+    if (
+      editType === "product" &&
+      editFormData.quantity &&
+      editFormData.unit_price
+    ) {
+      const calculatedTotal = editFormData.quantity * editFormData.unit_price;
+      console.log(
+        `Updating total price: ${editFormData.quantity} × ${editFormData.unit_price} = ${calculatedTotal}`,
+      );
+      editFormData.total_price = calculatedTotal;
+      // Force reactivity by reassigning the object
+      editFormData = { ...editFormData };
+    }
   }
-}
-
-function updateTotalPrice() {
-  if (editType === "product" && editFormData.quantity && editFormData.unit_price) {
-    const calculatedTotal = editFormData.quantity * editFormData.unit_price;
-    console.log(`Updating total price: ${editFormData.quantity} × ${editFormData.unit_price} = ${calculatedTotal}`);
-    editFormData.total_price = calculatedTotal;
-    // Force reactivity by reassigning the object
-    editFormData = { ...editFormData };
-  }
-}
-
 
   function cancelEdit() {
     showEditModal = false;
@@ -952,31 +1007,31 @@ function updateTotalPrice() {
       let updateData = {};
 
       if (editType === "hour") {
-  // Prepare hour log update data
-  updateData = {
-    dato: new Date(editFormData.dato).toISOString(),
-    kunde_navn: editFormData.kunde_navn,
-    totalsum: parseFloat(editFormData.totalsum),
-    price: parseFloat(editFormData.price),
-    kommentar: editFormData.kommentar,
-    user_name: editFormData.user_name,
-    invoiced: editFormData.invoiced,
-    // NEW: Save start and end times
-    startTime: editFormData.startTime,
-    endTime: editFormData.endTime,
-  };
-  
-  // Update in database
-  await pb.collection("log").update(editingLog.id, updateData);
-  
-  // Update local data
-  hourLogs = hourLogs.map((log) =>
-    log.id === editingLog.id ? { ...log, ...updateData } : log
-  );
-  
-  // Recalculate monthly stats
-  monthlyHourStats = calculateMonthlyHourStats(hourLogs);
-} else if (editType === "product") {
+        // Prepare hour log update data
+        updateData = {
+          dato: new Date(editFormData.dato).toISOString(),
+          kunde_navn: editFormData.kunde_navn,
+          totalsum: parseFloat(editFormData.totalsum),
+          price: parseFloat(editFormData.price),
+          kommentar: editFormData.kommentar,
+          user_name: editFormData.user_name,
+          invoiced: editFormData.invoiced,
+          // NEW: Save start and end times
+          startTime: editFormData.startTime,
+          endTime: editFormData.endTime,
+        };
+
+        // Update in database
+        await pb.collection("log").update(editingLog.id, updateData);
+
+        // Update local data
+        hourLogs = hourLogs.map((log) =>
+          log.id === editingLog.id ? { ...log, ...updateData } : log,
+        );
+
+        // Recalculate monthly stats
+        monthlyHourStats = calculateMonthlyHourStats(hourLogs);
+      } else if (editType === "product") {
         // For product logs, we need to handle relations differently
         // You might need to fetch the actual IDs for kunder, product, and user
         // This is a simplified version - you may need to adjust based on your data structure
@@ -1857,11 +1912,20 @@ function updateTotalPrice() {
   // Use the memoized value
   $: combinedMonthlyStats = lastCalculatedCombinedStats || [];
 
-  $: if (editType === "hour" && editFormData.startTime && editFormData.endTime) {
-  const calculatedHours = calculateTotalHours(editFormData.startTime, editFormData.endTime);
-  console.log(`Time changed: ${editFormData.startTime} to ${editFormData.endTime} = ${calculatedHours} hours`);
-  editFormData.totalsum = calculatedHours;
-}
+  $: if (
+    editType === "hour" &&
+    editFormData.startTime &&
+    editFormData.endTime
+  ) {
+    const calculatedHours = calculateTotalHours(
+      editFormData.startTime,
+      editFormData.endTime,
+    );
+    console.log(
+      `Time changed: ${editFormData.startTime} to ${editFormData.endTime} = ${calculatedHours} hours`,
+    );
+    editFormData.totalsum = calculatedHours;
+  }
 
   // Initialize component
   onMount(async () => {
@@ -2061,36 +2125,54 @@ function updateTotalPrice() {
           </button>
         </div>
 
+        <div class="flex gap-3 items-center py-4">
+          
+          <div class="w-64">
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Filter by User</label
+            >
+            <select
+              class="block w-full p-2 border border-gray-300 rounded-md"
+              bind:value={selectedUser}
+            >
+              <option value={null}>All Users</option>
+              {#each allUsers as user}
+                <option value={user.name}>{user.name}</option>
+              {/each}
+            </select>
+          </div>
+  
+          <div class="w-64">
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Filter by Customer</label
+            >
+            <select
+              class="block w-full p-2 border border-gray-300 rounded-md"
+              bind:value={selectedCustomer}
+            >
+              <option value={null}>All Customers</option>
+              {#each allCustomers as customer}
+                <option value={customer.name}>{customer.name}</option>
+              {/each}
+            </select>
+          </div>
+  
+          <!-- Invoice Status Filter - NEW -->
+          <div class="w-64">
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Invoice Status</label
+            >
+            <select
+              class="block w-full p-2 border border-gray-300 rounded-md"
+              bind:value={showInvoiced}
+            >
+              <option value="all">All Entries</option>
+              <option value="invoiced">Invoiced Only</option>
+              <option value="not-invoiced">Not Invoiced Only</option>
+            </select>
+          </div>
+        </div>
         <!-- User Filter -->
-        <div class="w-64">
-          <label class="block text-sm font-medium text-gray-700 mb-1"
-            >Filter by User</label
-          >
-          <select
-            class="block w-full p-2 border border-gray-300 rounded-md"
-            bind:value={selectedUser}
-          >
-            <option value={null}>All Users</option>
-            {#each allUsers as user}
-              <option value={user.name}>{user.name}</option>
-            {/each}
-          </select>
-        </div>
-
-        <!-- Invoice Status Filter - NEW -->
-        <div class="w-64">
-          <label class="block text-sm font-medium text-gray-700 mb-1"
-            >Invoice Status</label
-          >
-          <select
-            class="block w-full p-2 border border-gray-300 rounded-md"
-            bind:value={showInvoiced}
-          >
-            <option value="all">All Entries</option>
-            <option value="invoiced">Invoiced Only</option>
-            <option value="not-invoiced">Not Invoiced Only</option>
-          </select>
-        </div>
       </div>
 
       <!-- Month Summary - Hours Tab -->
@@ -2260,11 +2342,13 @@ function updateTotalPrice() {
                       class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
                     >
                       <button
-                        class="text-blue-600 hover:text-blue-900 mr-2 cursor-pointer"
-                        on:click={() => editHourLog(log)}
-                      >
-                        Edit
-                      </button>
+  class="text-blue-600 hover:text-blue-900 mr-2 cursor-pointer disabled:text-gray-400 disabled:cursor-not-allowed"
+  on:click={() => editHourLog(log)}
+  disabled={log.invoiced === true}
+  title={log.invoiced ? "Cannot edit invoiced logs" : "Edit log"}
+>
+  Edit
+</button>
                       <button
                         class="text-red-600 hover:text-red-900 ml-2"
                         on:click={() => confirmDeleteHourLog(log.id)}
@@ -2279,14 +2363,16 @@ function updateTotalPrice() {
           </div>
         {:else}
           <div class="text-center p-8 bg-gray-50 rounded-lg">
-            <p class="text-gray-500">
-              No hour logs found for this month{selectedUser
-                ? ` and user (${selectedUser})`
-                : ""}{showInvoiced !== "all"
-                ? ` with invoice status: ${showInvoiced}`
-                : ""}.
-            </p>
-          </div>
+  <p class="text-gray-500">
+    No hour logs found for this month{selectedUser
+      ? ` and user (${selectedUser})`
+      : ""}{selectedCustomer
+      ? ` and customer (${selectedCustomer})`
+      : ""}{showInvoiced !== "all"
+      ? ` with invoice status: ${showInvoiced}`
+      : ""}.
+  </p>
+</div>
         {/if}
 
         <!-- Month Summary - Products Tab -->
@@ -2460,11 +2546,13 @@ function updateTotalPrice() {
                       class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"
                     >
                       <button
-                        class="text-blue-600 hover:text-blue-900 mr-2 cursor-pointer"
-                        on:click={() => editProductLog(log)}
-                      >
-                        Edit
-                      </button>
+  class="text-blue-600 hover:text-blue-900 mr-2 cursor-pointer disabled:text-gray-400 disabled:cursor-not-allowed"
+  on:click={() => editProductLog(log)}
+  disabled={log.invoiced === true}
+  title={log.invoiced ? "Cannot edit invoiced logs" : "Edit log"}
+>
+  Edit
+</button>
                       <button
                         class="text-red-600 hover:text-red-900 ml-2"
                         on:click={() => confirmDeleteProductLog(log.id)}
@@ -2479,14 +2567,16 @@ function updateTotalPrice() {
           </div>
         {:else}
           <div class="text-center p-8 bg-gray-50 rounded-lg">
-            <p class="text-gray-500">
-              No product logs found for this month{selectedUser
-                ? ` and user (${selectedUser})`
-                : ""}{showInvoiced !== "all"
-                ? ` with invoice status: ${showInvoiced}`
-                : ""}.
-            </p>
-          </div>
+  <p class="text-gray-500">
+    No product logs found for this month{selectedUser
+      ? ` and user (${selectedUser})`
+      : ""}{selectedCustomer
+      ? ` and customer (${selectedCustomer})`
+      : ""}{showInvoiced !== "all"
+      ? ` with invoice status: ${showInvoiced}`
+      : ""}.
+  </p>
+</div>
         {/if}
       {/if}
     </div>
@@ -2868,8 +2958,12 @@ function updateTotalPrice() {
 </div>
 
 {#if showEditModal}
-  <div class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all">
+  <div
+    class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4"
+  >
+    <div
+      class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all"
+    >
       <div class="border-b border-gray-200 px-6 py-4">
         <h3 class="text-lg font-medium text-gray-900">
           Edit {editType.charAt(0).toUpperCase() + editType.slice(1)} Log
@@ -2880,8 +2974,6 @@ function updateTotalPrice() {
         {#if editType === "hour"}
           <!-- Enhanced Hour Log Edit Form with Time Fields and Event Handlers -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            
             <!-- Start Time with Event Handler -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -2895,7 +2987,7 @@ function updateTotalPrice() {
                 on:input={handleStartTimeChange}
               />
             </div>
-            
+
             <!-- End Time with Event Handler -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -2911,18 +3003,20 @@ function updateTotalPrice() {
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Date</label
+              >
               <input
                 type="date"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                 bind:value={editFormData.dato}
               />
             </div>
-            
+
             <!-- Total Hours (auto-calculated and read-only) -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
-                Total Hours 
+                Total Hours
                 <span class="text-xs text-blue-600">(auto-calculated)</span>
               </label>
               <input
@@ -2934,9 +3028,11 @@ function updateTotalPrice() {
                 readonly
               />
             </div>
-            
+
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Price (kr)</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Price (kr)</label
+              >
               <input
                 type="number"
                 step="0.01"
@@ -2945,9 +3041,11 @@ function updateTotalPrice() {
                 bind:value={editFormData.price}
               />
             </div>
-            
+
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">User</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >User</label
+              >
               <input
                 type="text"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
@@ -2955,7 +3053,7 @@ function updateTotalPrice() {
                 placeholder="User name"
               />
             </div>
-            
+
             <div class="flex items-center">
               <input
                 type="checkbox"
@@ -2963,13 +3061,18 @@ function updateTotalPrice() {
                 class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 bind:checked={editFormData.invoiced}
               />
-              <label for="edit-invoiced-hour" class="ml-2 text-sm text-gray-700">
+              <label
+                for="edit-invoiced-hour"
+                class="ml-2 text-sm text-gray-700"
+              >
                 Invoiced
               </label>
             </div>
-            
+
             <div class="md:col-span-2">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Comment</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Comment</label
+              >
               <textarea
                 rows="3"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
@@ -2977,54 +3080,108 @@ function updateTotalPrice() {
                 placeholder="Add a comment..."
               ></textarea>
             </div>
-            
+
             <!-- Time calculation info and validation -->
             {#if editFormData.startTime && editFormData.endTime}
-              <div class="md:col-span-2 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+              <div
+                class="md:col-span-2 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100"
+              >
                 <div class="text-sm">
                   <div class="flex items-center justify-between mb-2">
                     <span class="text-blue-800 font-medium">Time Summary:</span>
-                    <span class="text-xs text-gray-500">Using precision conversion table</span>
+                    <span class="text-xs text-gray-500"
+                      >Using precision conversion table</span
+                    >
                   </div>
-                  
+
                   <div class="flex items-center space-x-2 text-blue-900">
-                    <span class="bg-white px-2 py-1 rounded text-sm font-mono">{editFormData.startTime}</span>
-                    <svg class="h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                    <span class="bg-white px-2 py-1 rounded text-sm font-mono"
+                      >{editFormData.startTime}</span
+                    >
+                    <svg
+                      class="h-4 w-4 text-blue-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 7l5 5m0 0l-5 5m5-5H6"
+                      ></path>
                     </svg>
-                    <span class="bg-white px-2 py-1 rounded text-sm font-mono">{editFormData.endTime}</span>
+                    <span class="bg-white px-2 py-1 rounded text-sm font-mono"
+                      >{editFormData.endTime}</span
+                    >
                     <span class="text-lg font-bold">=</span>
-                    <span class="bg-blue-100 px-3 py-1 rounded font-bold text-blue-800">
+                    <span
+                      class="bg-blue-100 px-3 py-1 rounded font-bold text-blue-800"
+                    >
                       {(editFormData.totalsum || 0).toFixed(2)} hours
                     </span>
                   </div>
-                  
+
                   <!-- Validation warnings -->
                   {#if (editFormData.totalsum || 0) > 12}
                     <div class="flex items-center mt-2 text-red-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
-                      Extremely long work period ({(editFormData.totalsum || 0).toFixed(2)} hours)
+                      Extremely long work period ({(
+                        editFormData.totalsum || 0
+                      ).toFixed(2)} hours)
                     </div>
                   {:else if (editFormData.totalsum || 0) > 8}
                     <div class="flex items-center mt-2 text-orange-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
                       Work period exceeds standard 8-hour day
                     </div>
                   {:else if (editFormData.totalsum || 0) === 0}
                     <div class="flex items-center mt-2 text-gray-500 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
                       Please set both start and end times
                     </div>
                   {:else}
                     <div class="flex items-center mt-2 text-green-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
                       Normal work period duration
                     </div>
@@ -3032,34 +3189,49 @@ function updateTotalPrice() {
                 </div>
               </div>
             {:else}
-              <div class="md:col-span-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div
+                class="md:col-span-2 p-3 bg-gray-50 rounded-lg border border-gray-200"
+              >
                 <div class="text-sm text-gray-600 text-center">
-                  <svg class="h-8 w-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  <svg
+                    class="h-8 w-8 mx-auto mb-2 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
                   </svg>
                   Set start and end times to automatically calculate total hours
                 </div>
               </div>
             {/if}
           </div>
-          
         {:else if editType === "product"}
           <!-- Enhanced Product Log Edit Form with Price Calculation -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Date</label
+              >
               <input
                 type="date"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                 bind:value={editFormData.created}
               />
             </div>
-            
+
             <!-- Quantity with Event Handler -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
                 Quantity
-                <span class="text-xs text-gray-500">(auto-calculates total)</span>
+                <span class="text-xs text-gray-500"
+                  >(auto-calculates total)</span
+                >
               </label>
               <input
                 type="number"
@@ -3069,7 +3241,7 @@ function updateTotalPrice() {
                 on:input={handleQuantityChange}
               />
             </div>
-            
+
             <!-- NEW: Unit Price -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -3085,12 +3257,14 @@ function updateTotalPrice() {
                 on:input={handleUnitPriceChange}
               />
             </div>
-            
+
             <!-- Total Price (can be auto-calculated or manually entered) -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
                 Total Price (kr)
-                <span class="text-xs text-indigo-600">(auto-calculated or manual)</span>
+                <span class="text-xs text-indigo-600"
+                  >(auto-calculated or manual)</span
+                >
               </label>
               <input
                 type="number"
@@ -3101,9 +3275,11 @@ function updateTotalPrice() {
                 on:input={handleTotalPriceChange}
               />
             </div>
-            
+
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">User</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >User</label
+              >
               <input
                 type="text"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -3111,7 +3287,7 @@ function updateTotalPrice() {
                 placeholder="User name"
               />
             </div>
-            
+
             <div class="flex items-center">
               <input
                 type="checkbox"
@@ -3119,13 +3295,18 @@ function updateTotalPrice() {
                 class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 bind:checked={editFormData.invoiced}
               />
-              <label for="edit-invoiced-product" class="ml-2 text-sm text-gray-700">
+              <label
+                for="edit-invoiced-product"
+                class="ml-2 text-sm text-gray-700"
+              >
                 Invoiced
               </label>
             </div>
-            
+
             <div class="md:col-span-2">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Comment</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Comment</label
+              >
               <textarea
                 rows="3"
                 class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -3133,45 +3314,83 @@ function updateTotalPrice() {
                 placeholder="Add a comment..."
               ></textarea>
             </div>
-            
+
             <!-- Price calculation summary -->
             {#if editFormData.quantity && editFormData.unit_price}
-              <div class="md:col-span-2 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100">
+              <div
+                class="md:col-span-2 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100"
+              >
                 <div class="text-sm">
                   <div class="flex items-center justify-between mb-2">
-                    <span class="text-indigo-800 font-medium">Price Calculation:</span>
-                    <span class="text-xs text-gray-500">Quantity × Unit Price</span>
+                    <span class="text-indigo-800 font-medium"
+                      >Price Calculation:</span
+                    >
+                    <span class="text-xs text-gray-500"
+                      >Quantity × Unit Price</span
+                    >
                   </div>
-                  
+
                   <div class="flex items-center space-x-2 text-indigo-900">
-                    <span class="bg-white px-2 py-1 rounded text-sm font-mono">{editFormData.quantity}</span>
+                    <span class="bg-white px-2 py-1 rounded text-sm font-mono"
+                      >{editFormData.quantity}</span
+                    >
                     <span class="text-lg font-bold">×</span>
-                    <span class="bg-white px-2 py-1 rounded text-sm font-mono">{(editFormData.unit_price || 0).toFixed(2)} kr</span>
+                    <span class="bg-white px-2 py-1 rounded text-sm font-mono"
+                      >{(editFormData.unit_price || 0).toFixed(2)} kr</span
+                    >
                     <span class="text-lg font-bold">=</span>
-                    <span class="bg-indigo-100 px-3 py-1 rounded font-bold text-indigo-800">
+                    <span
+                      class="bg-indigo-100 px-3 py-1 rounded font-bold text-indigo-800"
+                    >
                       {(editFormData.total_price || 0).toFixed(2)} kr
                     </span>
                   </div>
-                  
+
                   <!-- Validation info -->
                   {#if editFormData.quantity > 100}
                     <div class="flex items-center mt-2 text-orange-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
                       Large quantity order ({editFormData.quantity} items)
                     </div>
                   {:else if (editFormData.total_price || 0) > 10000}
                     <div class="flex items-center mt-2 text-orange-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
-                      High value order ({(editFormData.total_price || 0).toFixed(2)} kr)
+                      High value order ({(
+                        editFormData.total_price || 0
+                      ).toFixed(2)} kr)
                     </div>
                   {:else}
                     <div class="flex items-center mt-2 text-green-600 text-xs">
-                      <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                      <svg
+                        class="h-4 w-4 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                          clip-rule="evenodd"
+                        />
                       </svg>
                       Normal order amount
                     </div>
@@ -3179,10 +3398,22 @@ function updateTotalPrice() {
                 </div>
               </div>
             {:else}
-              <div class="md:col-span-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div
+                class="md:col-span-2 p-3 bg-gray-50 rounded-lg border border-gray-200"
+              >
                 <div class="text-sm text-gray-600 text-center">
-                  <svg class="h-8 w-8 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                  <svg
+                    class="h-8 w-8 mx-auto mb-2 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
+                    ></path>
                   </svg>
                   Set quantity and unit price to automatically calculate total
                 </div>
