@@ -17,20 +17,20 @@
         { id: "dashboard", label: "Dashboard" },
         { id: "logging", label: "Arbejdstid" },
         { id: "cvr", label: "CVR Tjek" },
-        { id: "ansogninger", label: "Ansøgninger" },
         { 
             id: "admin", 
             label: "Admin",
             isDropdown: true,
             subItems: [
                 { id: "admin-activity", label: "Activity Dashboard" },
+                { id: "admin-ansogninger", label: "Ansøgninger" },
                 { 
                     id: "admin-fravaer", 
                     label: "Fravær",
                     isDropdown: true,
                     subItems: [
-                        { id: "admin-fravaer-dashboard", label: "Dashboard" },
-                        { id: "admin-fravaer-requests", label: "Requests" }
+                        { id: "admin-fravaer-dashboard", label: "Register" },
+                        { id: "admin-fravaer-requests", label: "Overview" }
                     ]
                 }
             ]

@@ -10,12 +10,12 @@
   import Log from "../../lib/Logging/Log.svelte";
   import Admin from "$lib/Admin.svelte";
   import AbsenceDashboard from "$lib/AbsenceLogging/Dashboard.svelte"
-  import AbsenceCalender from "$lib/AbsenceLogging/Calender.svelte";
+  import AbsenceCalender from "$lib/AbsenceLogging/Calender.svelte"
 
   import Logo from "$lib/assets/logo.svg"
 
   // Initialize PocketBase
-  const pb = new PocketBase("https://timesync.pockethost.io/"); // Replace with your PocketBase URL
+  const pb = new PocketBase("http://127.0.0.1:8090"); // Replace with your PocketBase URL
 
   let isLoggedIn = false;
   let userData = null;
@@ -86,16 +86,16 @@
     { id: "dashboard", label: "Dashboard" },
     { id: "log", label: "Log Demo" },
     { id: "cvr", label: "CVR Tjek" },
-    { id: "ansogninger", label: "Ansøgninger" },
     { 
       id: "admin", 
       label: "Admin",
       isDropdown: true,
       subItems: [
         { id: "admin-activity", label: "Activity Dashboard" },
+        { id: "admin-ansogninger", label: "Ansøgninger" },
         { 
           id: "admin-fravaer", 
-          label: "Absence",
+          label: "Fravær",
           isDropdown: true,
           subItems: [
             { id: "admin-fravaer-dashboard", label: "Register" },
@@ -209,22 +209,16 @@
               <!-- Your analytics content goes here -->
               <CvrTjek/>
             </div>
-          {:else if activeSiteId === 'ansogninger'}
-            <h1 class="text-2xl font-bold mb-4">Ansøgninger</h1>
-            <div class="bg-white p-4 rounded-lg shadow">
-              <!-- Your analytics content goes here -->
-              <Ansogninger/>
-            </div>
-          {:else if activeSiteId === 'admin'}
-            <h1 class="text-2xl font-bold mb-4">Admin</h1>
-            <div class="bg-white p-4 rounded-lg shadow">
-              <!-- Your analytics content goes here -->
-              <Admin/>
-            </div>
           {:else if activeSiteId === 'admin-activity'}
+            
             <div class="bg-white p-4 rounded-lg shadow">
               <!-- Activity dashboard content goes here -->
               <Admin/>
+            </div>
+          {:else if activeSiteId === 'admin-ansogninger'}
+            <div class="bg-white p-4 rounded-lg shadow">
+              <!-- Admin Ansøgninger content goes here -->
+              <Ansogninger/>
             </div>
           {:else if activeSiteId === 'admin-fravaer-dashboard'}
             <div class="bg-white p-4 rounded-lg shadow">
@@ -232,9 +226,10 @@
               <AbsenceDashboard/>
             </div>
           {:else if activeSiteId === 'admin-fravaer-requests'}
+            
             <div class="bg-white p-4 rounded-lg shadow">
               <!-- Admin Fravær requests content goes here -->
-              <AbsenceCalender/>
+             <AbsenceCalender/>
             </div>
         
          
