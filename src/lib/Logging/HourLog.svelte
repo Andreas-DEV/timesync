@@ -177,6 +177,13 @@
     calculateTotals();
   }
   
+  // Handle backdrop click to close modal
+  function handleBackdropClick(event) {
+    if (event.target === event.currentTarget) {
+      closeModal();
+    }
+  }
+  
   // Handle form submission with simplified approach
   async function handleSubmit() {
     if (!selectedCustomer) {
@@ -247,13 +254,19 @@
     totalHours = 0;
     totalPrice = 0;
   }
+  
+  // Handle modal close
+  function closeModal() {
+    showModal = false;
+    resetForm();
+  }
 </script>
 
 <div class="p-4">
   <!-- Button to open modal -->
   <button 
     on:click={() => showModal = true}
-    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center"
+    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer"
   >
     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
@@ -263,7 +276,10 @@
   
   <!-- Modal -->
   {#if showModal}
-    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+    <div 
+      class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+      on:click={handleBackdropClick}
+    >
       <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
         <h2 class="text-xl font-bold mb-4">Log Hours</h2>
         
@@ -353,14 +369,14 @@
             <button
               type="button"
               class="bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 px-4 rounded"
-              on:click={() => showModal = false}
+              on:click={closeModal}
               disabled={isLoading}
             >
               Cancel
             </button>
             <button
               type="submit"
-              class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center"
+              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center"
               disabled={isLoading}
             >
               {#if isLoading}
