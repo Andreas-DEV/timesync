@@ -1,277 +1,369 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import PocketBase from 'pocketbase';
-  import { initializeUser, userName, currentUser } from '../stores/userStore';
+  import { 
+    initializeUser, 
+    userName, 
+    currentUser, 
+    getCurrentUser, 
+    getCurrentUserName,
+    getIsAuthenticated 
+  } from '../stores/userStore';
   
   // Initialize PocketBase
   const pb = new PocketBase('https://timesync.pockethost.io/');
   
+  // Modal state
   let showModal = false;
-  let allCustomers = []; // All customers
-  let assignedCustomers = []; // Customers assigned to the current user
+  
+  // Customer data
+  let allCustomers = [];
+  let assignedCustomers = [];
   let selectedCustomer = null;
-  let selectedCustomerName = ""; // Store the customer name directly
-  let selectedCustomerId = ""; // Store the customer id
-  let date = new Date().toISOString().split('T')[0];
-  let startTime = ""; // Use string format for the inputs
-  let endTime = "";
-  let comment = '';
+  
+  // Form data
+  let formData = {
+    date: new Date().toISOString().split('T')[0],
+    startTime: "",
+    endTime: "",
+    comment: ''
+  };
+  
+  // Computed values
   let totalHours = 0;
   let totalPrice = 0;
-  let userNameValue = "Anonymous User"; // Default value
+  
+  // User state
   let currentUserValue = null;
-  let isAdmin = false; // Flag to track if the user is an admin
-  let isLoading = false; // Flag to track loading state
+  let userNameValue = "Anonymous User";
+  let isAdmin = false;
   
-  // Subscribe to the user store
-  const unsubscribeUser = currentUser.subscribe(value => {
-    currentUserValue = value;
-    console.log("Current user updated:", currentUserValue);
+  // Loading states
+  let isLoading = false;
+  let isInitializing = true;
+  
+  // Store unsubscribe functions
+  let unsubscribeUser;
+  let unsubscribeUserName;
+  
+  // Time conversion lookup table (moved outside for better performance)
+  const MINUTES_TO_DECIMAL = {
+    0: 0.00, 1: 0.02, 2: 0.03, 3: 0.05, 4: 0.07, 5: 0.08, 6: 0.10, 
+    7: 0.12, 8: 0.13, 9: 0.15, 10: 0.17, 11: 0.18, 12: 0.20,
+    13: 0.22, 14: 0.23, 15: 0.25, 16: 0.27, 17: 0.28, 18: 0.30,
+    19: 0.32, 20: 0.33, 21: 0.35, 22: 0.37, 23: 0.38, 24: 0.40,
+    25: 0.42, 26: 0.43, 27: 0.45, 28: 0.47, 29: 0.48, 30: 0.50,
+    31: 0.52, 32: 0.53, 33: 0.55, 34: 0.57, 35: 0.58, 36: 0.60,
+    37: 0.62, 38: 0.63, 39: 0.65, 40: 0.67, 41: 0.68, 42: 0.70,
+    43: 0.72, 44: 0.73, 45: 0.75, 46: 0.77, 47: 0.78, 48: 0.80,
+    49: 0.82, 50: 0.83, 51: 0.85, 52: 0.87, 53: 0.88, 54: 0.90,
+    55: 0.92, 56: 0.93, 57: 0.95, 58: 0.97, 59: 0.98, 60: 1.00
+  };
+  
+  // Subscribe to stores with proper cleanup
+  function subscribeToStores() {
+    unsubscribeUser = currentUser.subscribe(value => {
+      currentUserValue = value;
+      isAdmin = value?.admin === true || value?.role === 'admin';
+      
+      // Reload assigned customers when user changes
+      if (value && !isInitializing) {
+        loadAssignedCustomers();
+      }
+    });
     
-    // Here you can determine if the user is an admin based on their role
-    // This is just an example - adjust according to your actual user structure
-    isAdmin = currentUserValue?.admin === true || currentUserValue?.role === 'admin';
-  });
+    unsubscribeUserName = userName.subscribe(value => {
+      userNameValue = value;
+    });
+  }
   
-  const unsubscribeUserName = userName.subscribe(value => {
-    userNameValue = value;
-    console.log("User name updated:", userNameValue);
-  });
-  
-  // Fetch customers and current user on component mount
+  // Initialize component
   onMount(async () => {
     try {
-      // Get all customers
-      const records = await pb.collection('kunder').getFullList();
-      allCustomers = records;
+      subscribeToStores();
       
-      // Initialize the user from the store
+      // Load all customers first
+      await loadAllCustomers();
+      
+      // Initialize user
       await initializeUser();
       
-      // If user is logged in, fetch their assigned customers
-      if (currentUserValue && currentUserValue.id) {
-        await loadAssignedCustomers();
-      } else {
-        // If not logged in or no ID, just use all customers
-        assignedCustomers = allCustomers;
-      }
+      // Load assigned customers based on user
+      await loadAssignedCustomers();
       
     } catch (error) {
-      console.error('Error during initialization:', error);
+      console.error('Error during component initialization:', error);
+    } finally {
+      isInitializing = false;
     }
-    
-    return () => {
-      unsubscribeUser();
-      unsubscribeUserName();
-    };
   });
   
-  // Load customers assigned to the current user
-  async function loadAssignedCustomers() {
+  // Cleanup subscriptions
+  onDestroy(() => {
+    if (unsubscribeUser) unsubscribeUser();
+    if (unsubscribeUserName) unsubscribeUserName();
+  });
+  
+  // Load all customers
+  async function loadAllCustomers() {
     try {
-      if (!currentUserValue || !currentUserValue.id) {
-        assignedCustomers = allCustomers;
-        return;
-      }
-      
-      if (isAdmin) {
-        // Admins can see all customers
-        assignedCustomers = allCustomers;
-        return;
-      }
-      
-      // Get assignments for the current user
-      const assignmentsData = await pb.collection('user_customer_assignments').getFullList({
-        filter: `user = "${currentUserValue.id}"`,
+      const records = await pb.collection('kunder').getFullList({
+        sort: 'navn' // Sort by name for better UX
       });
-      
-      if (assignmentsData.length === 0) {
-        assignedCustomers = []; // No assigned customers
-      } else {
-        // Extract the customer IDs from the assignments
-        const assignedCustomerIds = assignmentsData.map(assignment => assignment.kunde);
-        
-        // Filter the customers list to only include assigned customers
-        assignedCustomers = allCustomers.filter(customer => 
-          assignedCustomerIds.includes(customer.id)
-        );
-      }
+      allCustomers = records;
     } catch (error) {
-      console.error('Error loading assigned customers:', error);
-      assignedCustomers = []; // On error, clear the list for safety
+      console.error('Error loading customers:', error);
+      allCustomers = [];
     }
   }
   
-  // Convert minutes to decimal hours based on the conversion table
-  function convertMinutesToDecimal(minutes) {
-    // Creating a mapping of minutes to decimal hours based on the provided table
-    const conversionTable = {
-      1: 0.02, 2: 0.03, 3: 0.05, 4: 0.07, 5: 0.08, 6: 0.10, 
-      7: 0.12, 8: 0.13, 9: 0.15, 10: 0.17, 11: 0.18, 12: 0.20,
-      13: 0.22, 14: 0.23, 15: 0.25, 16: 0.27, 17: 0.28, 18: 0.30,
-      19: 0.32, 20: 0.33, 21: 0.35, 22: 0.37, 23: 0.38, 24: 0.40,
-      25: 0.42, 26: 0.43, 27: 0.45, 28: 0.47, 29: 0.48, 30: 0.50,
-      31: 0.52, 32: 0.53, 33: 0.55, 34: 0.57, 35: 0.58, 36: 0.60,
-      37: 0.62, 38: 0.63, 39: 0.65, 40: 0.67, 41: 0.68, 42: 0.70,
-      43: 0.72, 44: 0.73, 45: 0.75, 46: 0.77, 47: 0.78, 48: 0.80,
-      49: 0.82, 50: 0.83, 51: 0.85, 52: 0.87, 53: 0.88, 54: 0.90,
-      55: 0.92, 56: 0.93, 57: 0.95, 58: 0.97, 59: 0.98, 60: 1.00
-    };
-    
-    // Calculate hours and remaining minutes
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    
-    // Get decimal value for remaining minutes
-    const decimalPart = conversionTable[remainingMinutes] || 0;
-    
-    // Return total hours in decimal
-    return hours + decimalPart;
+  // Load customers assigned to current user
+  async function loadAssignedCustomers() {
+    try {
+      const user = getCurrentUser();
+      
+      if (!user?.id) {
+        assignedCustomers = [];
+        return;
+      }
+      
+      // Admins see all customers
+      if (isAdmin) {
+        assignedCustomers = [...allCustomers];
+        return;
+      }
+      
+      // Get user assignments
+      const assignments = await pb.collection('user_customer_assignments').getFullList({
+        filter: `user = "${user.id}"`,
+        fields: 'kunde' // Only fetch the kunde field
+      });
+      
+      if (assignments.length === 0) {
+        assignedCustomers = [];
+        return;
+      }
+      
+      // Filter customers based on assignments
+      const assignedIds = new Set(assignments.map(a => a.kunde));
+      assignedCustomers = allCustomers.filter(customer => 
+        assignedIds.has(customer.id)
+      );
+      
+    } catch (error) {
+      console.error('Error loading assigned customers:', error);
+      assignedCustomers = [];
+    }
   }
   
-  // Convert time string to minutes
+  // Optimized time conversion functions
   function timeToMinutes(timeStr) {
-    if (!timeStr) return 0;
-    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    
+    const parts = timeStr.split(':');
+    if (parts.length !== 2) return 0;
+    
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+    
     return (hours * 60) + minutes;
   }
   
-  // Calculate total hours and price
-  function calculateTotals() {
-    const startMinutes = timeToMinutes(startTime);
-    const endMinutes = timeToMinutes(endTime);
+  function convertMinutesToDecimal(minutes) {
+    if (minutes <= 0) return 0;
     
-    if (startMinutes > endMinutes) {
-      // Handle case where work spans midnight
-      totalHours = convertMinutesToDecimal((24 * 60) - startMinutes + endMinutes);
-    } else {
-      totalHours = convertMinutesToDecimal(endMinutes - startMinutes);
-    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    const decimalPart = MINUTES_TO_DECIMAL[remainingMinutes] || 0;
     
-    if (selectedCustomer) {
-      totalPrice = totalHours * selectedCustomer.timepris;
-    }
-    
-    return { totalHours, totalPrice };
+    return hours + decimalPart;
   }
   
-  // Handle time input changes
-  function handleTimeChange() {
+  // Calculate totals (reactive)
+  function calculateTotals() {
+    if (!formData.startTime || !formData.endTime) {
+      totalHours = 0;
+      totalPrice = 0;
+      return;
+    }
+    
+    const startMinutes = timeToMinutes(formData.startTime);
+    const endMinutes = timeToMinutes(formData.endTime);
+    
+    let workMinutes;
+    if (startMinutes > endMinutes) {
+      // Work spans midnight
+      workMinutes = (24 * 60) - startMinutes + endMinutes;
+    } else {
+      workMinutes = endMinutes - startMinutes;
+    }
+    
+    totalHours = convertMinutesToDecimal(workMinutes);
+    totalPrice = selectedCustomer ? totalHours * selectedCustomer.timepris : 0;
+  }
+  
+  // Reactive statements for auto-calculation
+  $: if (formData.startTime || formData.endTime || selectedCustomer) {
     calculateTotals();
   }
   
   // Handle customer selection
   function handleCustomerChange(event) {
     const customerId = event.target.value;
-    selectedCustomer = allCustomers.find(c => c.id === customerId);
-    
-    if (selectedCustomer) {
-      // Store both ID and name separately
-      selectedCustomerId = selectedCustomer.id;
-      selectedCustomerName = selectedCustomer.navn;
-    } else {
-      selectedCustomerId = "";
-      selectedCustomerName = "";
-    }
-    
-    calculateTotals();
+    selectedCustomer = customerId ? 
+      allCustomers.find(c => c.id === customerId) : null;
   }
   
-  // Handle backdrop click to close modal
+  // Validate form data
+  function validateForm() {
+    const errors = [];
+    
+    if (!selectedCustomer) {
+      errors.push('Please select a customer');
+    }
+    
+    if (!formData.startTime) {
+      errors.push('Please enter start time');
+    }
+    
+    if (!formData.endTime) {
+      errors.push('Please enter end time');
+    }
+    
+    if (!formData.date) {
+      errors.push('Please select a date');
+    }
+    
+    if (formData.startTime && formData.endTime) {
+      const startMinutes = timeToMinutes(formData.startTime);
+      const endMinutes = timeToMinutes(formData.endTime);
+      
+      if (startMinutes === endMinutes) {
+        errors.push('Start and end time cannot be the same');
+      }
+    }
+    
+    return errors;
+  }
+  
+  // Handle form submission
+  async function handleSubmit() {
+    if (isLoading) return;
+    
+    const errors = validateForm();
+    if (errors.length > 0) {
+      alert('Please fix the following errors:\n' + errors.join('\n'));
+      return;
+    }
+    
+    isLoading = true;
+    
+    try {
+      const user = getCurrentUser();
+      const userName = getCurrentUserName();
+      
+      const logData = {
+        kunde_id: selectedCustomer.id,
+        kunde_navn: selectedCustomer.navn,
+        user: user?.id || null,
+        user_name: userName || 'Anonymous User',
+        dato: new Date(formData.date).toISOString(),
+        start: timeToMinutes(formData.startTime),
+        slut: timeToMinutes(formData.endTime),
+        totalsum: totalHours,
+        price: totalPrice,
+        kommentar: formData.comment || ''
+      };
+      
+      await pb.collection('log').create(logData);
+      
+      // Success feedback
+      showSuccessMessage();
+      closeModal();
+      
+      // Optional: Dispatch custom event instead of page reload
+      window.dispatchEvent(new CustomEvent('hoursLogged', { 
+        detail: logData 
+      }));
+      
+    } catch (error) {
+      console.error('Error logging hours:', error);
+      alert(`Error logging hours: ${error.message}`);
+    } finally {
+      isLoading = false;
+    }
+  }
+  
+  // Show success message instead of page reload
+  function showSuccessMessage() {
+    // Create a temporary success notification
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+    notification.textContent = 'Hours logged successfully!';
+    document.body.appendChild(notification);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 3000);
+  }
+  
+  // Reset form
+  function resetForm() {
+    selectedCustomer = null;
+    formData = {
+      date: new Date().toISOString().split('T')[0],
+      startTime: "",
+      endTime: "",
+      comment: ''
+    };
+    totalHours = 0;
+    totalPrice = 0;
+  }
+  
+  // Modal controls
+  function openModal() {
+    if (assignedCustomers.length === 0 && !isAdmin) {
+      alert('No customers are assigned to you. Please contact your administrator.');
+      return;
+    }
+    showModal = true;
+  }
+  
+  function closeModal() {
+    showModal = false;
+    resetForm();
+  }
+  
   function handleBackdropClick(event) {
     if (event.target === event.currentTarget) {
       closeModal();
     }
   }
   
-  // Handle form submission with simplified approach
-  async function handleSubmit() {
-    if (!selectedCustomer) {
-      alert('Please select a customer');
-      return;
+  // Handle escape key
+  function handleKeydown(event) {
+    if (event.key === 'Escape' && showModal) {
+      closeModal();
     }
-    
-    try {
-      // Set loading state
-      isLoading = true;
-      
-      calculateTotals();
-      
-      // Store customer and user information
-      const data = {
-        kunde_id: selectedCustomerId,      // Store ID for relations
-        kunde_navn: selectedCustomerName, // Store name directly for display
-        user: currentUserValue ? currentUserValue.id : null,  // Store user ID if logged in
-        user_name: userNameValue,       // Store user name for display
-        dato: new Date(date).toISOString(),
-        start: timeToMinutes(startTime),
-        slut: timeToMinutes(endTime),
-        totalsum: totalHours,
-        price: totalPrice,
-        kommentar: comment
-      };
-      
-      console.log('Submitting log with user information:', data);
-      
-      // Create the record in the log collection
-      await pb.collection('log').create(data);
-      
-      // Close modal immediately
-      showModal = false;
-      
-      // Show full-page loading animation immediately
-      const loadingOverlay = document.createElement('div');
-      loadingOverlay.className = 'fixed inset-0 bg-white bg-opacity-80 z-50 flex items-center justify-center';
-      loadingOverlay.innerHTML = `
-        <div class="flex flex-col items-center">
-          <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-4"></div>
-          <p class="text-lg font-medium text-gray-700">Updating...</p>
-        </div>
-      `;
-      document.body.appendChild(loadingOverlay);
-      
-      // Refresh the page after 500ms
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-      
-    } catch (error) {
-      console.error('Error logging hours:', error);
-      alert('Error logging hours: ' + error.message);
-      isLoading = false;
-    }
-  }
-  
-  // Reset form fields
-  function resetForm() {
-    selectedCustomer = null;
-    selectedCustomerName = "";
-    selectedCustomerId = "";
-    date = new Date().toISOString().split('T')[0];
-    startTime = "";
-    endTime = "";
-    comment = '';
-    totalHours = 0;
-    totalPrice = 0;
-  }
-  
-  // Handle modal close
-  function closeModal() {
-    showModal = false;
-    resetForm();
   }
 </script>
 
+<svelte:window on:keydown={handleKeydown} />
+
 <div class="p-4">
-  <!-- Button to open modal -->
+  <!-- Open Modal Button -->
   <button 
-    on:click={() => showModal = true}
-    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer"
+    on:click={openModal}
+    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+    disabled={isInitializing}
   >
     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
     </svg>
-    Log Hours
+    {isInitializing ? 'Loading...' : 'Log Hours'}
   </button>
   
   <!-- Modal -->
@@ -279,96 +371,127 @@
     <div 
       class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
       on:click={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
     >
-      <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-        <h2 class="text-xl font-bold mb-4">Log Hours</h2>
+      <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <h2 id="modal-title" class="text-xl font-bold mb-4">Log Hours</h2>
         
         <form on:submit|preventDefault={handleSubmit} class="space-y-4">
           <!-- Customer Selection -->
           <div>
-            <label class="block text-sm font-medium text-gray-700">Customer</label>
+            <label for="customer-select" class="block text-sm font-medium text-gray-700">
+              Customer *
+            </label>
             <select 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+              id="customer-select"
+              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
               on:change={handleCustomerChange}
+              value={selectedCustomer?.id || ""}
               required
               disabled={isLoading}
             >
               <option value="">Select a customer</option>
-              {#each assignedCustomers as customer}
+              {#each assignedCustomers as customer (customer.id)}
                 <option value={customer.id}>{customer.navn}</option>
               {/each}
             </select>
-            {#if selectedCustomerName}
-              <p class="mt-1 text-sm text-green-600">Selected customer: {selectedCustomerName}</p>
+            
+            {#if selectedCustomer}
+              <p class="mt-1 text-sm text-green-600">
+                Selected: {selectedCustomer.navn} ({selectedCustomer.timepris} kr/hour)
+              </p>
             {/if}
-            {#if assignedCustomers.length === 0 && !isAdmin}
-              <p class="mt-1 text-sm text-red-600">No customers are assigned to you. Please contact your administrator.</p>
+            
+            {#if assignedCustomers.length === 0 && !isAdmin && !isInitializing}
+              <p class="mt-1 text-sm text-red-600">
+                No customers assigned. Contact your administrator.
+              </p>
             {/if}
           </div>
           
           <!-- Date -->
           <div>
-            <label class="block text-sm font-medium text-gray-700">Date</label>
+            <label for="date-input" class="block text-sm font-medium text-gray-700">
+              Date *
+            </label>
             <input 
+              id="date-input"
               type="date" 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-              bind:value={date}
+              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              bind:value={formData.date}
               required
               disabled={isLoading}
             />
           </div>
           
-          <!-- Start Time -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700">Start Time</label>
-            <input 
-              type="time" 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-              bind:value={startTime}
-              on:change={handleTimeChange}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          
-          <!-- End Time -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700">End Time</label>
-            <input 
-              type="time" 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-              bind:value={endTime}
-              on:change={handleTimeChange}
-              required
-              disabled={isLoading}
-            />
+          <!-- Time Inputs -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label for="start-time" class="block text-sm font-medium text-gray-700">
+                Start Time *
+              </label>
+              <input 
+                id="start-time"
+                type="time" 
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                bind:value={formData.startTime}
+                required
+                disabled={isLoading}
+              />
+            </div>
+            
+            <div>
+              <label for="end-time" class="block text-sm font-medium text-gray-700">
+                End Time *
+              </label>
+              <input 
+                id="end-time"
+                type="time" 
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                bind:value={formData.endTime}
+                required
+                disabled={isLoading}
+              />
+            </div>
           </div>
           
           <!-- Comment -->
           <div>
-            <label class="block text-sm font-medium text-gray-700">Comment</label>
+            <label for="comment" class="block text-sm font-medium text-gray-700">
+              Comment
+            </label>
             <textarea 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+              id="comment"
+              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
               rows="3"
-              bind:value={comment}
+              bind:value={formData.comment}
               disabled={isLoading}
+              placeholder="Optional comment..."
             ></textarea>
           </div>
           
           <!-- Summary -->
-          <!-- <div class="bg-gray-100 p-3 rounded">
-            <p class="font-medium">Total Hours: {totalHours.toFixed(2)}</p>
-            {#if selectedCustomer}
-              <p class="font-medium">Hourly Rate: {selectedCustomer.timepris} kr</p>
-              <p class="font-bold">Total Price: {totalPrice.toFixed(2)} kr</p>
-            {/if}
-          </div> -->
+          {#if totalHours > 0 && selectedCustomer}
+            <div class="bg-gray-50 p-3 rounded border">
+              <p class="text-sm font-medium text-gray-700">
+                Total Hours: <span class="font-bold">{totalHours.toFixed(2)}</span>
+              </p>
+              <p class="text-sm font-medium text-gray-700">
+                Rate: <span class="font-bold">{selectedCustomer.timepris} kr/hour</span>
+              </p>
+              <p class="text-sm font-bold text-gray-900">
+                Total: <span class="text-blue-600">{totalPrice.toFixed(2)} kr</span>
+              </p>
+            </div>
+          {/if}
           
-          <!-- Buttons -->
-          <div class="flex justify-end space-x-3">
+          <!-- Action Buttons -->
+          <div class="flex justify-end space-x-3 pt-4">
             <button
               type="button"
-              class="bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 px-4 rounded"
+              class="bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 px-4 rounded transition-colors duration-200"
               on:click={closeModal}
               disabled={isLoading}
             >
@@ -376,8 +499,8 @@
             </button>
             <button
               type="submit"
-              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center"
-              disabled={isLoading}
+              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px]"
+              disabled={isLoading || !selectedCustomer}
             >
               {#if isLoading}
                 <div class="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>

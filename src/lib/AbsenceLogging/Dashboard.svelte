@@ -11,12 +11,16 @@
 	let showModal = false;
 	let selectedWorker = null;
 	let submitting = false;
-	let toast = { show: false, message: '', type: 'success' }; // success or error
+	let toast = { show: false, message: '', type: 'success' };
+	let authenticated = false;
+	let showLoginModal = false;
+	let loginData = { email: '', password: '' };
+	let loginError = '';
 
 	// Form data
 	let absenceData = {
 		absence_type: '',
-		date: new Date().toISOString().split('T')[0], // Today's date
+		date: new Date().toISOString().split('T')[0],
 		start_time: '',
 		end_time: '',
 		comment: ''
@@ -31,10 +35,41 @@
 	];
 
 	onMount(async () => {
+		// Check if already authenticated
+		if (pb.authStore.isValid) {
+			authenticated = true;
+			await loadWorkers();
+		} else {
+			loading = false;
+			showLoginModal = true;
+		}
+	});
+
+	async function login() {
 		try {
-			// Fetch all users/workers from PocketBase
+			loginError = '';
+			await pb.collection('users').authWithPassword(loginData.email, loginData.password);
+			authenticated = true;
+			showLoginModal = false;
+			loading = true;
+			await loadWorkers();
+		} catch (err) {
+			console.error('Login error:', err);
+			loginError = 'Invalid credentials. Please try again.';
+		}
+	}
+
+	function logout() {
+		pb.authStore.clear();
+		authenticated = false;
+		workers = [];
+		showLoginModal = true;
+	}
+
+	async function loadWorkers() {
+		try {
 			const records = await pb.collection('users').getFullList({
-				sort: 'name', // Sort by name alphabetically
+				sort: 'name',
 			});
 			
 			workers = records;
@@ -44,12 +79,11 @@
 			error = 'Failed to load workers. Please try again.';
 			loading = false;
 		}
-	});
+	}
 
 	function handleWorkerClick(worker) {
 		selectedWorker = worker;
 		showModal = true;
-		// Reset form data
 		absenceData = {
 			absence_type: '',
 			date: new Date().toISOString().split('T')[0],
@@ -86,7 +120,6 @@
 				comment: absenceData.comment
 			};
 
-			// Only include time fields for "Syg på arbejde"
 			if (absenceData.absence_type === 'Syg på arbejde') {
 				if (absenceData.start_time) data.start_time = absenceData.start_time;
 				if (absenceData.end_time) data.end_time = absenceData.end_time;
@@ -104,7 +137,6 @@
 		}
 	}
 
-	// Function to get initials from name for fallback avatar
 	function getInitials(name) {
 		if (!name) return '?';
 		return name.split(' ')
@@ -114,9 +146,7 @@
 			.slice(0, 2);
 	}
 
-	// Function to get avatar URL or fallback to initials
 	function getAvatarUrl(worker) {
-		// If worker has an avatar field, construct the URL
 		if (worker.avatar) {
 			return `https://timesync.pockethost.io/api/files/users/${worker.id}/${worker.avatar}`;
 		}
@@ -125,15 +155,25 @@
 </script>
 
 <svelte:head>
-	
+	<title>Register Absence</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50 py-8">
 	<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 		<!-- Header -->
-		<div class="mb-8">
-			<h1 class="text-3xl font-bold text-gray-900">Register Absence</h1>
-			<p class="mt-2 text-sm text-gray-600">Select a worker to register their absence</p>
+		<div class="mb-8 flex justify-between items-center">
+			<div>
+				<h1 class="text-3xl font-bold text-gray-900">Register Absence</h1>
+				<p class="mt-2 text-sm text-gray-600">Select a worker to register their absence</p>
+			</div>
+			{#if authenticated}
+				<button 
+					on:click={logout}
+					class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+				>
+					Logout
+				</button>
+			{/if}
 		</div>
 
 		<!-- Loading State -->
@@ -161,7 +201,7 @@
 		{/if}
 
 		<!-- Workers Grid -->
-		{#if !loading && !error && workers.length > 0}
+		{#if !loading && !error && workers.length > 0 && authenticated}
 			<div class="flex justify-center">
 				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
 					{#each workers as worker}
@@ -169,7 +209,6 @@
 							on:click={() => handleWorkerClick(worker)}
 							class="group bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-blue-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
 						>
-							<!-- Profile Picture -->
 							<div class="flex justify-center mb-4">
 								{#if getAvatarUrl(worker)}
 									<img
@@ -186,7 +225,6 @@
 								{/if}
 							</div>
 
-							<!-- Worker Name -->
 							<div class="text-center">
 								<h3 class="text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
 									{worker.name || worker.email.split('@')[0]}
@@ -198,7 +236,6 @@
 								{/if}
 							</div>
 
-							<!-- Hover indicator -->
 							<div class="mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
 								<div class="w-full h-0.5 bg-blue-500 rounded-full"></div>
 							</div>
@@ -209,7 +246,7 @@
 		{/if}
 
 		<!-- Empty State -->
-		{#if !loading && !error && workers.length === 0}
+		{#if !loading && !error && workers.length === 0 && authenticated}
 			<div class="text-center py-12">
 				<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
@@ -221,11 +258,60 @@
 	</div>
 </div>
 
-<!-- Modal -->
+<!-- Login Modal -->
+{#if showLoginModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+			<div class="flex items-center justify-between pb-3 border-b">
+				<h3 class="text-lg font-medium text-gray-900">Admin Login Required</h3>
+			</div>
+
+			<div class="py-4 space-y-4">
+				{#if loginError}
+					<div class="bg-red-50 border border-red-200 rounded-md p-3">
+						<p class="text-sm text-red-800">{loginError}</p>
+					</div>
+				{/if}
+
+				<div>
+					<label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+					<input
+						type="email"
+						id="email"
+						bind:value={loginData.email}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						required
+					/>
+				</div>
+
+				<div>
+					<label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+					<input
+						type="password"
+						id="password"
+						bind:value={loginData.password}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						required
+					/>
+				</div>
+			</div>
+
+			<div class="flex items-center justify-end pt-3 border-t">
+				<button
+					on:click={login}
+					class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+				>
+					Login
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Absence Registration Modal -->
 {#if showModal && selectedWorker}
 	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closeModal}>
 		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" on:click|stopPropagation>
-			<!-- Modal Header -->
 			<div class="flex items-center justify-between pb-3 border-b">
 				<h3 class="text-lg font-medium text-gray-900">
 					Register Absence - {selectedWorker.name || selectedWorker.email.split('@')[0]}
@@ -237,9 +323,7 @@
 				</button>
 			</div>
 
-			<!-- Modal Body -->
 			<div class="py-4 space-y-4">
-				<!-- Date -->
 				<div>
 					<label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
 					<input
@@ -251,7 +335,6 @@
 					/>
 				</div>
 
-				<!-- Absence Type -->
 				<div>
 					<label for="absence_type" class="block text-sm font-medium text-gray-700 mb-1">Absence Type *</label>
 					<select
@@ -267,7 +350,6 @@
 					</select>
 				</div>
 
-				<!-- Time fields for "Syg på arbejde" -->
 				{#if absenceData.absence_type === 'Syg på arbejde'}
 					<div class="space-y-3 p-3 bg-gray-50 rounded-md">
 						<h4 class="text-sm font-medium text-gray-700">Time Details</h4>
@@ -294,7 +376,6 @@
 					</div>
 				{/if}
 
-				<!-- Comment -->
 				<div>
 					<label for="comment" class="block text-sm font-medium text-gray-700 mb-1">Comment</label>
 					<textarea
@@ -307,7 +388,6 @@
 				</div>
 			</div>
 
-			<!-- Modal Footer -->
 			<div class="flex items-center justify-end pt-3 border-t space-x-3">
 				<button
 					on:click={closeModal}
@@ -332,7 +412,6 @@
 {#if toast.show}
 	<div class="fixed bottom-4 right-12 z-50 animate-in slide-in-from-right duration-300">
 		<div class="flex items-center p-4 rounded-lg shadow-lg {toast.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'} max-w-sm">
-			<!-- Icon -->
 			<div class="flex-shrink-0">
 				{#if toast.type === 'success'}
 					<svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
@@ -345,7 +424,6 @@
 				{/if}
 			</div>
 			
-			<!-- Message -->
 			<div class="ml-3">
 				<p class="text-sm font-medium {toast.type === 'success' ? 'text-green-800' : 'text-red-800'}">
 					{toast.message}

@@ -1,10 +1,14 @@
 <script>
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
+  import PocketBase from 'pocketbase';
   
   // Props
-  export let pocketbase; // Your PocketBase instance
+  export let pocketbaseUrl = 'https://your-pocketbase-url.com'; // Your PocketBase URL
   export let onSuccess = () => {}; // Optional callback for when logging is successful
+  
+  // Initialize PocketBase instance
+  const pocketbase = new PocketBase(pocketbaseUrl);
 
   // Component state
   let showModal = false;

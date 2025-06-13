@@ -34,9 +34,9 @@
     let selectedMessage = null;
     let currentView = 'new'; // 'new', 'read', 'old'
     let showReplyForm = false;
-    let hasViewedMessages = false; // Track if user has viewed messages since last unread
-    let isSendingMessage = false; // Track loading state for new messages
-    let isSendingReply = false; // Track loading state for replies
+    let hasViewedMessages = false;
+    let isSendingMessage = false;
+    let isSendingReply = false;
     
     // Loading states for different message views
     let isLoadingMessages = false;
@@ -62,44 +62,21 @@
     // Reactive statements for current view data
     $: currentMessages = (() => {
         switch (currentView) {
-            case 'new':
-                return messages || [];
-            case 'read':
-                return readMessages || [];
-            case 'old':
-                return oldMessages || [];
-            default:
-                return [];
+            case 'new': return messages || [];
+            case 'read': return readMessages || [];
+            case 'old': return oldMessages || [];
+            default: return [];
         }
     })();
 
     $: currentLoadingState = (() => {
         switch (currentView) {
-            case 'new':
-                return isLoadingMessages;
-            case 'read':
-                return isLoadingReadMessages;
-            case 'old':
-                return isLoadingOldMessages;
-            default:
-                return false;
+            case 'new': return isLoadingMessages;
+            case 'read': return isLoadingReadMessages;
+            case 'old': return isLoadingOldMessages;
+            default: return false;
         }
     })();
-    
-    // Debug reactive updates
-    $: {
-        console.log("=== REACTIVE UPDATE ===");
-        console.log("currentView:", currentView);
-        console.log("messages:", messages?.length || 0);
-        console.log("readMessages:", readMessages?.length || 0);
-        console.log("oldMessages:", oldMessages?.length || 0);
-        console.log("currentMessages:", currentMessages?.length || 0);
-        console.log("currentLoadingState:", currentLoadingState);
-        console.log("isLoadingMessages:", isLoadingMessages);
-        console.log("isLoadingReadMessages:", isLoadingReadMessages);
-        console.log("isLoadingOldMessages:", isLoadingOldMessages);
-        console.log("========================");
-    }
 
     // Check if component is ready (has required data)
     $: isComponentReady = pb && userData && userData.id;
@@ -126,7 +103,6 @@
         isLoadingMessages = true;
         
         try {
-            // Load new/unread messages
             const newMessageList = await pb.collection('messages').getFullList({
                 filter: `recipient = "${pb.authStore.model.id}" && archived = false && read = false`,
                 sort: '-created',
@@ -135,16 +111,14 @@
             messages = newMessageList;
             const newUnreadCount = newMessageList.length;
             
-            // If unread count goes from 0 to something, reset hasViewedMessages
             if (unreadCount === 0 && newUnreadCount > 0) {
                 hasViewedMessages = false;
             }
             
             unreadCount = newUnreadCount;
-            console.log("Loaded new messages:", messages.length);
         } catch (error) {
             console.error("Error loading messages:", error);
-            messages = []; // Set to empty array on error
+            messages = [];
         } finally {
             isLoadingMessages = false;
         }
@@ -152,12 +126,10 @@
 
     async function loadReadMessages() {
         if (!pb || !pb.authStore.model?.id) {
-            console.log("Cannot load read messages - no auth");
             isLoadingReadMessages = false;
             return;
         }
         
-        console.log("Starting to load read messages...");
         isLoadingReadMessages = true;
         
         try {
@@ -167,15 +139,12 @@
                 expand: 'sender'
             });
             readMessages = readMessageList;
-            console.log("Loaded read messages:", readMessages.length);
         } catch (error) {
             console.error("Error loading read messages:", error);
-            readMessages = []; // Set to empty array on error
+            readMessages = [];
+        } finally {
+            isLoadingReadMessages = false;
         }
-        
-        // Explicitly set loading to false
-        console.log("Setting isLoadingReadMessages to false");
-        isLoadingReadMessages = false;
     }
 
     async function loadOldMessages() {
@@ -193,10 +162,9 @@
                 expand: 'sender'
             });
             oldMessages = messageList;
-            console.log("Loaded old messages:", oldMessages.length);
         } catch (error) {
             console.error("Error loading old messages:", error);
-            oldMessages = []; // Set to empty array on error
+            oldMessages = [];
         } finally {
             isLoadingOldMessages = false;
         }
@@ -224,7 +192,6 @@
                 read: false
             });
 
-            // Reset form and close modal
             messageForm = { recipient: "", subject: "", message: "" };
             showMessageModal = false;
         } catch (error) {
@@ -242,9 +209,7 @@
             await pb.collection('messages').update(messageId, {
                 read: true
             });
-            // Reload messages to update the UI
-            await loadMessages();
-            await loadReadMessages();
+            await Promise.all([loadMessages(), loadReadMessages()]);
         } catch (error) {
             console.error("Error marking message as read:", error);
         }
@@ -257,9 +222,7 @@
             await pb.collection('messages').update(messageId, {
                 archived: true
             });
-            // Reload messages to update the UI
-            await loadMessages();
-            await loadReadMessages();
+            await Promise.all([loadMessages(), loadReadMessages()]);
         } catch (error) {
             console.error("Error archiving message:", error);
         }
@@ -281,8 +244,7 @@
                 pb.collection('messages').update(message.id, { archived: true })
             );
             await Promise.all(updatePromises);
-            await loadMessages();
-            await loadReadMessages();
+            await Promise.all([loadMessages(), loadReadMessages()]);
         } catch (error) {
             console.error("Error clearing all messages:", error);
         }
@@ -301,21 +263,18 @@
         showNotificationTray = !showNotificationTray;
         
         if (showNotificationTray) {
-            // Always reset to new view when opening
             if (currentView === 'old') {
                 currentView = 'new';
             }
             
-            // Mark that user has viewed the notification tray
             hasViewedMessages = true;
             
-            // Reset all loading states first
+            // Reset loading states
             isLoadingMessages = false;
             isLoadingReadMessages = false;
             isLoadingOldMessages = false;
             
-            // Load the current view's messages
-            console.log("Opening notification tray, current view:", currentView);
+            // Load current view messages
             if (currentView === 'new') {
                 loadMessages();
             } else if (currentView === 'read') {
@@ -328,38 +287,28 @@
 
     function showNewMessages() {
         currentView = 'new';
-        console.log("Switching to new messages view");
-        // Reset loading states
         isLoadingMessages = false;
         isLoadingReadMessages = false;
         isLoadingOldMessages = false;
-        // Load messages
         loadMessages();
     }
 
     function showReadMessages() {
         currentView = 'read';
-        console.log("Switching to read messages view");
-        // Force reset ALL loading states
         isLoadingMessages = false;
         isLoadingReadMessages = false;
         isLoadingOldMessages = false;
         
-        // Add a small delay to ensure state is reset
         setTimeout(() => {
-            console.log("About to load read messages, loading state:", isLoadingReadMessages);
             loadReadMessages();
         }, 10);
     }
 
     function showOldMessages() {
         currentView = 'old';
-        console.log("Switching to old messages view");
-        // Reset loading states
         isLoadingMessages = false;
         isLoadingReadMessages = false;
         isLoadingOldMessages = false;
-        // Load messages
         loadOldMessages();
     }
 
@@ -369,18 +318,12 @@
         showNotificationTray = false;
         showReplyForm = false;
         
-        // Mark that user has viewed messages
         hasViewedMessages = true;
         
-        // Mark as read if it's unread
         if (!message.read) {
             await markAsRead(message.id);
-            // If we're currently viewing new messages and this message was marked as read,
-            // we need to refresh the current view to remove it from the list
             if (currentView === 'new') {
-                // Reload the current view's messages
-                await loadMessages();
-                await loadReadMessages();
+                await Promise.all([loadMessages(), loadReadMessages()]);
             }
         }
     }
@@ -391,8 +334,6 @@
         showReplyForm = false;
         replyForm = { subject: "", message: "" };
         
-        // Force refresh of current view when closing message detail
-        // This ensures the UI is updated if message read status changed
         if (currentView === 'new') {
             loadMessages();
         } else if (currentView === 'read') {
@@ -433,11 +374,8 @@
                 archived: false
             });
 
-            // Reset reply form and hide it
             replyForm = { subject: "", message: "" };
             showReplyForm = false;
-            
-            // Close the entire message detail modal after successful send
             closeMessageDetail();
             
         } catch (error) {
@@ -448,25 +386,16 @@
         }
     }
 
-    // Handle absence submission event
     function handleAbsenceSubmitted(event) {
-        console.log("Absence request submitted:", event.detail);
-        // You can add any additional logic here, like showing a toast notification
-        // or refreshing other parts of the dashboard
+        // Handle absence submission event if needed
     }
 
     onMount(async () => {
-        // Wait a bit to ensure props are fully loaded
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
         if (!isComponentReady) {
-            console.warn("Dashboard: Required props not provided, some features may not work");
             return;
         }
 
-        console.log("Dashboard: Component initialized with props:", { pb: !!pb, userData: !!userData, userName });
-
-        // Initialize all arrays and loading states
+        // Initialize arrays
         messages = [];
         readMessages = [];
         oldMessages = [];
@@ -476,16 +405,12 @@
         isLoadingOldMessages = false;
 
         await loadUsers();
-        // Only load new messages on mount, other views will load when clicked
         await loadMessages();
 
         // Subscribe to real-time message updates
         try {
             unsubscribe = await pb.collection('messages').subscribe('*', async (e) => {
-                // Only update if the message is for the current user
                 if (e.record.recipient === pb.authStore.model?.id) {
-                    console.log("Real-time message update received");
-                    // Only refresh the current view
                     if (currentView === 'new') {
                         await loadMessages();
                     } else if (currentView === 'read') {
@@ -493,7 +418,7 @@
                     } else if (currentView === 'old') {
                         await loadOldMessages();
                     }
-                    // Always refresh new messages for the counter
+                    
                     if (currentView !== 'new') {
                         await loadMessages();
                     }
@@ -541,7 +466,6 @@
 </style>
 
 {#if !isComponentReady}
-    <!-- Loading state for component -->
     <div class="min-h-screen bg-gray-50 flex items-center justify-center">
         <div class="text-center">
             <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -567,8 +491,7 @@
                             on:click={openMessageModal}
                             class="bg-gray-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center space-x-2 cursor-pointer"
                         >
-                        
-                        <img src={sendIcon} class="invert" alt="">
+                            <img src={sendIcon} class="invert" alt="">
                         </button>
 
                         <!-- Notification Bell -->
@@ -625,7 +548,6 @@
                                     </div>
                                     <div class="max-h-96 overflow-y-auto">
                                         {#if currentLoadingState}
-                                            <!-- Loading Animation -->
                                             <div class="p-8 flex flex-col items-center justify-center text-gray-500">
                                                 <svg class="w-8 h-8 spinner mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" class="opacity-25"></circle>
