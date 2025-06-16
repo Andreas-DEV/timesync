@@ -15,8 +15,7 @@
     
     export let siteLinks = [
         { id: "dashboard", label: "Dashboard" },
-        { id: "logging", label: "Arbejdstid" },
-        { id: "cvr", label: "CVR Tjek" },
+        { id: "settings", label: "Settings" },
         { 
             id: "admin", 
             label: "Admin",

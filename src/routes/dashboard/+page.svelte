@@ -4,8 +4,8 @@
   import "../../app.css";
   import Dashboard from "$lib/Dashboard.svelte";
   import Sidebar from '$lib/Sidebar.svelte';
-  import CvrTjek from "$lib/CvrTjek.svelte";
   import Ansogninger from "$lib/Ansogninger.svelte";
+  import UserSettings from "$lib/Management/UserSettings.svelte";
   import Admin from "$lib/Admin.svelte";
   import AbsenceDashboard from "$lib/AbsenceLogging/Dashboard.svelte"
   import AbsenceCalender from "$lib/AbsenceLogging/Calender.svelte"
@@ -27,7 +27,7 @@
   // Site configuration
   const siteLinks = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "cvr", label: "CVR Tjek" },
+    { id: "settings", label: "Settings" },
     { 
       id: "admin", 
       label: "Admin",
@@ -129,7 +129,7 @@
   // Component mapping for cleaner rendering
   const componentMap = {
     'dashboard': Dashboard,
-    'cvr': CvrTjek,
+    'settings': UserSettings,
     'admin-activity': Admin,
     'worker-hours': WorkerHoursCalendar,
     'admin-ansogninger': Ansogninger,
