@@ -11,6 +11,11 @@
 	let hoveredHours = null;
 	let mousePosition = { x: 0, y: 0 };
 
+	// Delete modal state
+	let showDeleteModal = false;
+	let hoursToDelete = null;
+	let isDeleting = false;
+
 	// Color mapping for different hour ranges
 	const hoursColors = {
 		'0-4': 'bg-red-100 border-red-300 text-red-800',
@@ -114,6 +119,40 @@
 			x: event.clientX,
 			y: event.clientY
 		};
+	}
+
+	// Handle double click on worker hours entry
+	function handleHoursDoubleClick(hours) {
+		hoursToDelete = hours;
+		showDeleteModal = true;
+	}
+
+	// Close delete modal
+	function closeDeleteModal() {
+		showDeleteModal = false;
+		hoursToDelete = null;
+		isDeleting = false;
+	}
+
+	// Delete worker hours entry
+	async function deleteWorkerHours() {
+		if (!hoursToDelete) return;
+		
+		isDeleting = true;
+		try {
+			await pb.collection('worker_hours').delete(hoursToDelete.id);
+			
+			// Close modal first
+			closeDeleteModal();
+			
+			// Refresh the calendar to ensure data is up to date
+			await fetchWorkerHours();
+			
+		} catch (err) {
+			console.error('Error deleting worker hours:', err);
+			alert('Failed to delete worker hours entry. Please try again.');
+			isDeleting = false;
+		}
 	}
 
 	// Format time for display
@@ -323,9 +362,11 @@
 						<div class="space-y-1">
 							{#each getHoursForDate(day) as hours (hours.id)}
 								<div
-									class="text-xs px-1 py-0.5 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm {getHoursColor(hours.totalsum || 0)}"
+									class="text-xs px-1 py-0.5 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm select-none {getHoursColor(hours.totalsum || 0)}"
 									on:mouseenter={(e) => handleMouseEnter(e, hours)}
 									on:mouseleave={handleMouseLeave}
+									on:dblclick={() => handleHoursDoubleClick(hours)}
+									title="Double-click to delete"
 								>
 									<div class="text-xs font-medium truncate">
 										{hours.expand?.user?.name || hours.expand?.user?.email?.split('@')[0] || hours.user_name || 'Unknown'}
@@ -459,5 +500,75 @@
 				{hoveredHours.kommentar}
 			</div>
 		{/if}
+	</div>
+{/if}
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteModal && hoursToDelete}
+	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+		<div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+			<div class="flex items-center mb-4">
+				<div class="flex-shrink-0">
+					<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+					</svg>
+				</div>
+				<div class="ml-3">
+					<h3 class="text-lg font-medium text-gray-900">Delete Worker Hours</h3>
+				</div>
+			</div>
+			
+			<div class="mb-6">
+				<p class="text-sm text-gray-500 mb-3">
+					Are you sure you want to delete this worker hours entry? This action cannot be undone.
+				</p>
+				
+				<div class="bg-gray-50 rounded-md p-3 border">
+					<div class="text-sm">
+						<div class="font-medium text-gray-900">
+							{hoursToDelete.expand?.user?.name || hoursToDelete.expand?.user?.email?.split('@')[0] || hoursToDelete.user_name || 'Unknown User'}
+						</div>
+						<div class="text-gray-600 mt-1">
+							{hoursToDelete.totalsum || 0} hours
+						</div>
+						<div class="text-gray-500 text-xs mt-1">
+							{new Date(hoursToDelete.dato).toLocaleDateString()}
+						</div>
+						{#if hoursToDelete.kommentar}
+							<div class="text-gray-600 text-xs mt-2 border-t border-gray-200 pt-2">
+								{hoursToDelete.kommentar}
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+			
+			<div class="flex justify-end space-x-3">
+				<button
+					type="button"
+					class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+					on:click={closeDeleteModal}
+					disabled={isDeleting}
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+					on:click={deleteWorkerHours}
+					disabled={isDeleting}
+				>
+					{#if isDeleting}
+						<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						Deleting...
+					{:else}
+						Delete
+					{/if}
+				</button>
+			</div>
+		</div>
 	</div>
 {/if}

@@ -10,6 +10,16 @@
   import AbsenceDashboard from "$lib/AbsenceLogging/Dashboard.svelte"
   import AbsenceCalender from "$lib/AbsenceLogging/Calender.svelte"
   import WorkerHoursCalendar from "$lib/Workers/WorkerHoursCalendar.svelte";
+  
+  // Import userStore functions
+  import { 
+    currentUser, 
+    userName, 
+    isAuthenticated, 
+    isLoading as userLoading,
+    initializeUser,
+    logout as userStoreLogout
+  } from "../../lib/stores/userStore";
 
   // Initialize PocketBase
   const pb = new PocketBase("https://timesync.pockethost.io/");
@@ -19,10 +29,10 @@
   let userData = null;
   let isLoading = true;
   let isLoggingOut = false;
-  let userName = "";
   let authError = false;
   let activeSiteId = "dashboard";
   let sidebarCollapsed = false;
+  let displayName = "";
 
   // Site configuration
   const siteLinks = [
@@ -49,6 +59,13 @@
     }
   ];
 
+  // Subscribe to userStore changes
+  $: {
+    userData = $currentUser;
+    displayName = $userName;
+    isLoggedIn = $isAuthenticated;
+  }
+
   // Utility functions
   function redirectToLogin() {
     pb.authStore.clear();
@@ -61,6 +78,7 @@
     isLoggingOut = true;
     try {
       await new Promise(resolve => setTimeout(resolve, 750));
+      userStoreLogout(); // Use userStore logout
       redirectToLogin();
     } catch (error) {
       console.error("Logout failed:", error);
@@ -68,32 +86,17 @@
     }
   }
 
-  // Fetch user data efficiently
-  async function fetchUserData(userId) {
-    try {
-      const userRecord = await pb.collection('users').getOne(userId);
-      return userRecord.name || userRecord.username || userData.email || "User";
-    } catch (error) {
-      // Try alternative collection name
-      try {
-        const userRecord = await pb.collection('_users').getOne(userId);
-        return userRecord.name || userRecord.username || userData.email || "User";
-      } catch {
-        return userData.email || userData.username || "User";
-      }
-    }
-  }
-
   // Initialize authentication and user data
   async function initializeAuth() {
     try {
-      if (!pb.authStore.isValid || !pb.authStore.model?.id) {
+      // Use userStore initialization
+      await initializeUser();
+      
+      // Check if authentication was successful
+      if (!$isAuthenticated) {
         redirectToLogin();
         return;
       }
-
-      userData = pb.authStore.model;
-      userName = await fetchUserData(userData.id);
       
       // Restore saved preferences
       const savedActiveSiteId = localStorage.getItem('activeSiteId');
@@ -102,7 +105,6 @@
       if (savedActiveSiteId) activeSiteId = savedActiveSiteId;
       if (savedCollapseState !== null) sidebarCollapsed = savedCollapseState === 'true';
       
-      isLoggedIn = true;
     } catch (error) {
       console.error("Authentication failed:", error);
       authError = true;
@@ -144,7 +146,7 @@
   <title>TIMESYNC - Dashboard</title>
 </svelte:head>
 
-{#if isLoading}
+{#if isLoading || $userLoading}
   <div class="flex items-center justify-center min-h-screen bg-gray-100">
     <div class="text-center">
       <div class="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto"></div>
@@ -189,12 +191,13 @@
         collapsed={sidebarCollapsed}
         on:siteChange={handleSiteChange}
         on:toggleCollapse={handleSidebarToggle}
+        on:logout={handleLogout}
       />
       
       <main class="flex-grow p-6 overflow-auto">
         <div class="bg-white p-4 rounded-lg shadow">
           {#if currentComponent}
-            <svelte:component this={currentComponent} {pb} {userData} {userName} />
+            <svelte:component this={currentComponent} {pb} {userData} userName={displayName} />
           {:else}
             <div class="text-center py-8">
               <p class="text-gray-600">Page not found</p>

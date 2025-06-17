@@ -59,13 +59,6 @@
 		}
 	}
 
-	function logout() {
-		pb.authStore.clear();
-		authenticated = false;
-		workers = [];
-		showLoginModal = true;
-	}
-
 	async function loadWorkers() {
 		try {
 			const records = await pb.collection('users').getFullList({
@@ -166,14 +159,6 @@
 				<h1 class="text-3xl font-bold text-gray-900">Register Absence</h1>
 				<p class="mt-2 text-sm text-gray-600">Select a worker to register their absence</p>
 			</div>
-			{#if authenticated}
-				<button 
-					on:click={logout}
-					class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-				>
-					Logout
-				</button>
-			{/if}
 		</div>
 
 		<!-- Loading State -->
@@ -259,54 +244,7 @@
 </div>
 
 <!-- Login Modal -->
-{#if showLoginModal}
-	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-			<div class="flex items-center justify-between pb-3 border-b">
-				<h3 class="text-lg font-medium text-gray-900">Admin Login Required</h3>
-			</div>
 
-			<div class="py-4 space-y-4">
-				{#if loginError}
-					<div class="bg-red-50 border border-red-200 rounded-md p-3">
-						<p class="text-sm text-red-800">{loginError}</p>
-					</div>
-				{/if}
-
-				<div>
-					<label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-					<input
-						type="email"
-						id="email"
-						bind:value={loginData.email}
-						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						required
-					/>
-				</div>
-
-				<div>
-					<label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-					<input
-						type="password"
-						id="password"
-						bind:value={loginData.password}
-						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						required
-					/>
-				</div>
-			</div>
-
-			<div class="flex items-center justify-end pt-3 border-t">
-				<button
-					on:click={login}
-					class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-				>
-					Login
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <!-- Absence Registration Modal -->
 {#if showModal && selectedWorker}
