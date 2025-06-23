@@ -1,56 +1,112 @@
-import { writable, get } from 'svelte/store';
+// Enhanced userStore.js with better error handling and consistency
+import { writable, get, derived } from 'svelte/store';
 import PocketBase from 'pocketbase';
 
-// Initialize PocketBase
-const pb = new PocketBase('https://timesync.pockethost.io/');
+// Single PocketBase instance - export this for use across all components
+export const pb = new PocketBase('https://timesync.pockethost.io/');
 
-// Create stores
+// Core authentication stores
 export const currentUser = writable(null);
 export const userName = writable('Anonymous User');
 export const isLoading = writable(false);
 export const isAuthenticated = writable(false);
+export const authError = writable(null);
 
-// Helper function to set user data from any user object
+// Derived stores for common checks
+export const isAdmin = derived(currentUser, ($user) => 
+  $user?.admin === true || $user?.role === 'admin'
+);
+
+export const userInfo = derived(
+  [currentUser, userName, isAuthenticated], 
+  ([$user, $name, $isAuth]) => ({
+    user: $user,
+    name: $name,
+    isAuthenticated: $isAuth,
+    id: $user?.id || null
+  })
+);
+
+// Auth state management
+let authInitialized = false;
+let initializationPromise = null;
+
 function setUserData(userRecord) {
+  if (!userRecord) {
+    clearUserData();
+    return;
+  }
+  
   currentUser.set(userRecord);
   isAuthenticated.set(true);
+  authError.set(null);
   
-  // Use name or username, fall back to email
   const name = userRecord.name || userRecord.username || userRecord.email || 'Unknown User';
   userName.set(name);
+  
+  console.log('User authenticated:', name);
 }
 
-// Helper function to clear user data
 function clearUserData() {
   isAuthenticated.set(false);
   currentUser.set(null);
   userName.set('Anonymous User');
 }
 
-// Initialize user data on load - optimized version
+// Initialize user - ensures only one initialization at a time
 export async function initializeUser() {
-  // Prevent multiple simultaneous calls
+  // Return existing promise if already initializing
+  if (initializationPromise) {
+    return await initializationPromise;
+  }
+  
+  // Return cached result if already initialized
+  if (authInitialized && !get(isLoading)) {
+    return get(currentUser);
+  }
+  
+  // Create new initialization promise
+  initializationPromise = performInitialization();
+  
+  try {
+    const result = await initializationPromise;
+    authInitialized = true;
+    return result;
+  } finally {
+    initializationPromise = null;
+  }
+}
+
+async function performInitialization() {
   if (get(isLoading)) {
-    console.log('User initialization already in progress');
-    return null;
+    return get(currentUser);
   }
   
   isLoading.set(true);
+  authError.set(null);
   
   try {
+    // Check if we have a valid auth state
     if (pb.authStore.isValid && pb.authStore.model) {
       const authUser = pb.authStore.model;
       
-      // Use the auth store data directly - no additional API call needed
-      setUserData(authUser);
-      console.log('User authenticated from auth store:', get(userName));
-      return authUser;
+      try {
+        // Verify the auth is still valid by making a test request
+        await pb.collection('users').getOne(authUser.id);
+        setUserData(authUser);
+        return authUser;
+      } catch (error) {
+        // Auth token might be expired, clear it
+        console.warn('Auth token verification failed:', error);
+        pb.authStore.clear();
+        clearUserData();
+      }
     } else {
-      // No authenticated user - clear everything
       clearUserData();
     }
   } catch (error) {
     console.error('Error initializing user:', error);
+    authError.set(error.message);
     clearUserData();
   } finally {
     isLoading.set(false);
@@ -59,177 +115,99 @@ export async function initializeUser() {
   return null;
 }
 
-// Get the current user's name
-export function getCurrentUserName() {
-  return get(userName);
-}
-
-// Get the current user object
-export function getCurrentUser() {
-  return get(currentUser);
-}
-
-// Get current authentication status
-export function getIsAuthenticated() {
-  return get(isAuthenticated);
-}
-
-// Get current loading status
-export function getIsLoading() {
-  return get(isLoading);
-}
-
-// Login a user - optimized version
+// Enhanced login with better error handling
 export async function login(email, password) {
-  // Prevent multiple simultaneous login attempts
   if (get(isLoading)) {
-    console.log('Login already in progress');
-    return false;
+    throw new Error('Login already in progress');
   }
   
-  // Validate input
   if (!email || !password) {
-    console.error('Email and password are required');
-    return false;
+    throw new Error('Email and password are required');
   }
   
   isLoading.set(true);
+  authError.set(null);
   
   try {
-    // Single API call for authentication
     const authData = await pb.collection('users').authWithPassword(email, password);
     
     if (!authData || !authData.record) {
       throw new Error('Authentication failed - no data returned');
     }
     
-    // Use the returned user data directly - no need for additional API call
     setUserData(authData.record);
-    console.log('Login successful:', get(userName));
-    
+    authInitialized = true;
     return true;
   } catch (error) {
     console.error('Login error:', error);
+    authError.set(error.message);
     clearUserData();
-    return false;
+    throw error;
   } finally {
     isLoading.set(false);
   }
 }
 
-// Register a new user - optimized version
-export async function register(email, password, passwordConfirm, additionalData = {}) {
-  // Prevent multiple simultaneous registration attempts
-  if (get(isLoading)) {
-    console.log('Registration already in progress');
-    return false;
-  }
-  
-  // Validate input
-  if (!email || !password || !passwordConfirm) {
-    console.error('Email, password, and password confirmation are required');
-    return false;
-  }
-  
-  if (password !== passwordConfirm) {
-    console.error('Passwords do not match');
-    return false;
-  }
-  
-  isLoading.set(true);
-  
-  try {
-    const userData = {
-      email,
-      password,
-      passwordConfirm,
-      ...additionalData
-    };
-    
-    const record = await pb.collection('users').create(userData);
-    
-    if (!record) {
-      throw new Error('Registration failed - no record returned');
-    }
-    
-    console.log('Registration successful');
-    
-    // Automatically log in after successful registration
-    // This will now be much faster since login is optimized
-    return await login(email, password);
-  } catch (error) {
-    console.error('Registration error:', error);
-    return false;
-  } finally {
-    isLoading.set(false);
-  }
-}
-
-// Logout the current user
+// Logout with cleanup
 export function logout() {
   try {
     pb.authStore.clear();
     clearUserData();
+    authInitialized = false;
+    authError.set(null);
     console.log('User logged out successfully');
   } catch (error) {
     console.error('Logout error:', error);
-    // Still clear local state even if there's an error
     clearUserData();
+    authInitialized = false;
   }
 }
 
-// Check if user is currently authenticated
-export function checkAuth() {
-  return pb.authStore.isValid && pb.authStore.model;
+// Helper functions for components
+export function getCurrentUser() {
+  return get(currentUser);
 }
 
-// Refresh the current user's data - only call this when you specifically need fresh data
-export async function refreshUserData() {
+export function getCurrentUserName() {
+  return get(userName);
+}
+
+export function getIsAuthenticated() {
+  return get(isAuthenticated);
+}
+
+export function requireAuth() {
   const user = getCurrentUser();
+  const isAuth = getIsAuthenticated();
   
-  if (!user || !getIsAuthenticated()) {
-    console.log('No authenticated user to refresh');
-    return null;
+  if (!isAuth || !user) {
+    throw new Error('Authentication required');
   }
   
-  if (get(isLoading)) {
-    console.log('Another operation in progress');
-    return null;
-  }
-  
-  isLoading.set(true);
-  
-  try {
-    const refreshedUser = await pb.collection('users').getOne(user.id);
-    setUserData(refreshedUser);
-    console.log('User data refreshed');
-    return refreshedUser;
-  } catch (error) {
-    console.error('Error refreshing user data:', error);
-    return null;
-  } finally {
-    isLoading.set(false);
-  }
+  return user;
 }
 
-// Auto-refresh auth token (useful for long-running sessions)
+// Auto-refresh functionality for long sessions
 export async function refreshAuth() {
-  if (!checkAuth()) {
+  if (!pb.authStore.isValid) {
     return false;
   }
   
   try {
     const authData = await pb.collection('users').authRefresh();
-    // Update user data with refreshed data if available
     if (authData && authData.record) {
       setUserData(authData.record);
     }
-    console.log('Auth token refreshed');
     return true;
   } catch (error) {
     console.error('Auth refresh failed:', error);
-    // If refresh fails, the user might need to log in again
     logout();
     return false;
   }
+}
+
+// Setup auto-refresh timer (call this once in your main app)
+export function setupAuthRefresh() {
+  // Refresh every 24 hours
+  setInterval(refreshAuth, 24 * 60 * 60 * 1000);
 }

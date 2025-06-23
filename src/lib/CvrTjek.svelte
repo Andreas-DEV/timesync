@@ -1,150 +1,198 @@
 <script>
-    import { onMount } from 'svelte';
-    import PocketBase from 'pocketbase';
-    
-    let searchValue = '';
-    let companyData = null;
-    let isLoading = false;
-    let error = '';
-    let searchHistory = [];
-    let isLoadingHistory = false;
-    let historyError = '';
-    let isCompanyInfoExpanded = true; // Controls the expanded/collapsed state
-    
-    // Initialize PocketBase
-    const pb = new PocketBase('https://timesync.pockethost.io/');
-    
-    /**
-     * Fetches company information from the CVR API
-     * @param {string} searchValue - The company's CVR number or name to search for
-     * @param {string} [country='dk'] - The country code (default: 'dk')
-     * @returns {Promise<Object>} Promise with the company data
-     */
-    const fetchCompanyInfo = async (searchValue, country = 'dk') => {
-      try {
-        if (!searchValue || searchValue.trim() === '') {
-          throw new Error('Search value cannot be empty');
+  import { onMount } from 'svelte';
+  import PocketBase from 'pocketbase';
+  
+  let searchValue = '';
+  let companyData = null;
+  let isLoading = false;
+  let error = '';
+  let searchHistory = [];
+  let isLoadingHistory = false;
+  let historyError = '';
+  let isCompanyInfoExpanded = true;
+  let currentUser = null;
+  
+  // Initialize PocketBase
+  const pb = new PocketBase('https://timesync.pockethost.io/');
+  
+  // Check authentication
+  const checkAuth = () => {
+    currentUser = pb.authStore.model;
+    if (!currentUser) {
+      console.log('User not authenticated');
+      searchHistory = [];
+    }
+  };
+  
+  /**
+   * Fetches company information from the CVR API
+   * @param {string} searchValue - The company's CVR number or name to search for
+   * @param {string} [country='dk'] - The country code (default: 'dk')
+   * @returns {Promise<Object>} Promise with the company data
+   */
+  const fetchCompanyInfo = async (searchValue, country = 'dk') => {
+    try {
+      if (!searchValue || searchValue.trim() === '') {
+        throw new Error('Search value cannot be empty');
+      }
+
+      const proxyUrl = '/api/cvr-proxy';
+      
+      const url = `${proxyUrl}?search=${encodeURIComponent(searchValue)}&country=${country}`;
+         
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Your App Name/1.0'
         }
+      });
+
+      if (!response.ok) {
+        throw new Error(`CVR API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching CVR data:', error);
+      throw error;
+    }
+  };
   
-        const proxyUrl = '/api/cvr-proxy'; // Example path to your backend proxy endpoint
-        
-        const url = `${proxyUrl}?search=${encodeURIComponent(searchValue)}&country=${country}`;
-           
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Your App Name/1.0' // It's good practice to identify your application
-          }
-        });
+  // Function to fetch search history from PocketBase (user-specific)
+  const fetchSearchHistory = async () => {
+    if (!currentUser) return;
+    
+    isLoadingHistory = true;
+    historyError = '';
+    
+    try {
+      const result = await pb.collection('logs').getList(1, 10, {
+        sort: '-created',
+        filter: `user = "${currentUser.id}"`
+      });
+      searchHistory = result.items;
+    } catch (err) {
+      historyError = err.message || 'An error occurred while fetching search history';
+      console.error('Error fetching search history:', err);
+    } finally {
+      isLoadingHistory = false;
+    }
+  };
   
-        if (!response.ok) {
-          throw new Error(`CVR API request failed with status ${response.status}`);
-        }
+  // Save search to PocketBase with user relation
+  const saveSearch = async (searchTerm) => {
+    if (!currentUser) return;
+    
+    try {
+      await pb.collection('logs').create({
+        searched: searchTerm,
+        user: currentUser.id
+      });
+      
+      await fetchSearchHistory();
+    } catch (err) {
+      console.error('Error saving search history:', err);
+    }
+  };
   
-        const data = await response.json();
-        return data;
-      } catch (error) {
-        console.error('Error fetching CVR data:', error);
-        throw error;
-      }
-    };
+  // Delete a search history record
+  const deleteSearchRecord = async (recordId) => {
+    if (!currentUser) return;
     
-    // Function to fetch search history from PocketBase
-    const fetchSearchHistory = async () => {
-      isLoadingHistory = true;
-      historyError = '';
-      
-      try {
-        const result = await pb.collection('logs').getList(1, 10, {
-          sort: '-created', // Sort by creation date, newest first
-        });
-        searchHistory = result.items;
-      } catch (err) {
-        historyError = err.message || 'An error occurred while fetching search history';
-        console.error('Error fetching search history:', err);
-      } finally {
-        isLoadingHistory = false;
-      }
-    };
+    try {
+      await pb.collection('logs').delete(recordId);
+      await fetchSearchHistory();
+    } catch (err) {
+      console.error('Error deleting search record:', err);
+      historyError = err.message || 'An error occurred while deleting the record';
+    }
+  };
+  
+  // Function to handle new search
+  const handleSearch = async () => {
+    if (!searchValue) return;
+    if (!currentUser) {
+      error = 'Please log in to search';
+      return;
+    }
     
-    // Fetch search history on component mount
-    onMount(fetchSearchHistory);
+    isLoading = true;
+    error = '';
     
-    // Save search to PocketBase
-    const saveSearch = async (searchTerm) => {
-      try {
-        // Create a new record in the logs collection
-        await pb.collection('logs').create({
-          searched: searchTerm,
-          // 'created' field will be automatically set by PocketBase
-        });
-        
-        // Refresh the search history
-        await fetchSearchHistory();
-      } catch (err) {
-        console.error('Error saving search history:', err);
-        // We don't want to stop the main flow if this fails
-      }
-    };
+    try {
+      companyData = await fetchCompanyInfo(searchValue);
+      await saveSearch(searchValue);
+    } catch (err) {
+      error = err.message || 'An error occurred while fetching company data';
+      companyData = null;
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  // Function to handle "Search Again" from history
+  const handleSearchAgain = async (term) => {
+    if (!currentUser) {
+      error = 'Please log in to search';
+      return;
+    }
     
-    // Delete a search history record
-    const deleteSearchRecord = async (recordId) => {
-      try {
-        await pb.collection('logs').delete(recordId);
-        // Refresh the search history after deletion
-        await fetchSearchHistory();
-      } catch (err) {
-        console.error('Error deleting search record:', err);
-        historyError = err.message || 'An error occurred while deleting the record';
-      }
-    };
+    searchValue = term;
     
-    // Function to handle new search
-    const handleSearch = async () => {
-      if (!searchValue) return;
-      
-      isLoading = true;
-      error = '';
-      
-      try {
-        companyData = await fetchCompanyInfo(searchValue);
-        
-        // Save search to history after successful search
-        await saveSearch(searchValue);
-      } catch (err) {
-        error = err.message || 'An error occurred while fetching company data';
+    isLoading = true;
+    error = '';
+    
+    try {
+      companyData = await fetchCompanyInfo(searchValue);
+    } catch (err) {
+      error = err.message || 'An error occurred while fetching company data';
+      companyData = null;
+    } finally {
+      isLoading = false;
+    }
+  };
+  
+  // Handle form submission
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    handleSearch();
+  };
+  
+
+  
+  // Component mount and auth listener
+  onMount(() => {
+    checkAuth();
+    if (currentUser) {
+      fetchSearchHistory();
+    }
+    
+    // Listen for auth changes
+    pb.authStore.onChange(() => {
+      checkAuth();
+      if (currentUser) {
+        fetchSearchHistory();
+      } else {
+        searchHistory = [];
         companyData = null;
-      } finally {
-        isLoading = false;
+        searchValue = '';
+        error = '';
       }
-    };
-  
-    // Function to handle "Search Again" from history
-    const handleSearchAgain = async (term) => {
-      searchValue = term;
-      
-      isLoading = true;
-      error = '';
-      
-      try {
-        companyData = await fetchCompanyInfo(searchValue);
-        // No saveSearch call here to prevent duplicates
-      } catch (err) {
-        error = err.message || 'An error occurred while fetching company data';
-        companyData = null;
-      } finally {
-        isLoading = false;
-      }
-    };
-    
-    // Handle form submission (when user presses Enter in the input field)
-    const handleSubmit = (e) => {
-      e.preventDefault();
-      handleSearch();
-    };
-  </script>
-  
+    });
+  });
+</script>
+
+{#if !currentUser}
+  <div class="max-w-3xl mx-auto p-4 font-sans">
+    <div class="bg-yellow-50 p-6 rounded-md text-center border border-yellow-200">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4">Company Information Lookup</h2>
+      <p class="text-yellow-700 mb-4">Please log in to use the company lookup feature</p>
+      <p class="text-sm text-gray-600">You need to authenticate with PocketBase to access this service.</p>
+    </div>
+  </div>
+{:else}
   <div class="max-w-3xl mx-auto p-4 font-sans">
     <h2 class="text-2xl font-bold text-gray-800 mb-6">Company Information Lookup</h2>
     
@@ -274,9 +322,9 @@
     {/if}
   </div>
   
-  <!-- Search History Component (Separate from the main component) -->
+  <!-- Search History Component -->
   <div class="max-w-3xl mx-auto p-4 font-sans mt-8 rounded-md">
-      <h2 class="text-2xl font-bold text-gray-800 mb-6">Search History</h2>
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">Your Search History</h2>
     <div class="bg-white rounded-lg border border-gray-200">
       
       {#if isLoadingHistory}
@@ -330,3 +378,4 @@
       {/if}
     </div>
   </div>
+{/if}

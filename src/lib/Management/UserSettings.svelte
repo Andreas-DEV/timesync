@@ -40,7 +40,7 @@
     email = user.email || '';
     confirmEmail = user.email || '';
     emailVisibility = user.emailVisibility || false;
-    avatarPreview = user.avatar ? pb.files.getUrl(user, user.avatar) : '';
+    avatarPreview = user.avatar ? pb.files.getURL(user, user.avatar) : '';
     userLoading = false;
   }
   
@@ -51,7 +51,7 @@
     email = user.email || '';
     confirmEmail = user.email || '';
     emailVisibility = user.emailVisibility || false;
-    avatarPreview = user.avatar ? pb.files.getUrl(user, user.avatar) : '';
+    avatarPreview = user.avatar ? pb.files.getURL(user, user.avatar) : '';
     userLoading = false;
   }
   

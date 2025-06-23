@@ -1,25 +1,18 @@
+<!-- HourLog.svelte - Fixed version -->
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import PocketBase from 'pocketbase';
-  import { 
-    initializeUser, 
-    userName, 
-    currentUser, 
-    getCurrentUser, 
-    getCurrentUserName,
-    getIsAuthenticated 
-  } from '../stores/userStore';
+  import { pb, userInfo, initializeUser, requireAuth } from '../stores/userStore';
+  import { fade } from 'svelte/transition';
   
-  // Initialize PocketBase
-  const pb = new PocketBase('https://timesync.pockethost.io/');
-  
-  // Modal state
+  // Component state
+  let isComponentReady = false;
   let showModal = false;
-  
-  // Customer data
   let allCustomers = [];
   let assignedCustomers = [];
   let selectedCustomer = null;
+  let isLoading = false;
+  let isInitializing = true;
+  let error = null;
   
   // Form data
   let formData = {
@@ -33,20 +26,14 @@
   let totalHours = 0;
   let totalPrice = 0;
   
-  // User state
-  let currentUserValue = null;
-  let userNameValue = "Anonymous User";
+  // User info reactive
+  let userInfoValue = { user: null, name: 'Anonymous User', isAuthenticated: false, id: null };
   let isAdmin = false;
   
-  // Loading states
-  let isLoading = false;
-  let isInitializing = true;
+  // Store subscriptions
+  let unsubscribeUserInfo;
   
-  // Store unsubscribe functions
-  let unsubscribeUser;
-  let unsubscribeUserName;
-  
-  // Time conversion lookup table (moved outside for better performance)
+  // Time conversion lookup table
   const MINUTES_TO_DECIMAL = {
     0: 0.00, 1: 0.02, 2: 0.03, 3: 0.05, 4: 0.07, 5: 0.08, 6: 0.10, 
     7: 0.12, 8: 0.13, 9: 0.15, 10: 0.17, 11: 0.18, 12: 0.20,
@@ -60,69 +47,69 @@
     55: 0.92, 56: 0.93, 57: 0.95, 58: 0.97, 59: 0.98, 60: 1.00
   };
   
-  // Subscribe to stores with proper cleanup
+  // Subscribe to user info store
   function subscribeToStores() {
-    unsubscribeUser = currentUser.subscribe(value => {
-      currentUserValue = value;
-      isAdmin = value?.admin === true || value?.role === 'admin';
+    unsubscribeUserInfo = userInfo.subscribe(value => {
+      userInfoValue = value;
+      isAdmin = value?.user?.admin === true || value?.user?.role === 'admin';
       
-      // Reload assigned customers when user changes
-      if (value && !isInitializing) {
+      // Reload assigned customers when user changes and component is ready
+      if (value.isAuthenticated && isComponentReady) {
         loadAssignedCustomers();
       }
-    });
-    
-    unsubscribeUserName = userName.subscribe(value => {
-      userNameValue = value;
     });
   }
   
   // Initialize component
-  onMount(async () => {
+  async function initializeComponent() {
     try {
+      isInitializing = true;
+      error = null;
+      
+      // Subscribe to stores
       subscribeToStores();
       
-      // Load all customers first
-      await loadAllCustomers();
-      
-      // Initialize user
+      // Initialize user authentication
       await initializeUser();
       
-      // Load assigned customers based on user
+      // Check authentication
+      if (!userInfoValue.isAuthenticated) {
+        throw new Error('User authentication required');
+      }
+      
+      // Load component data
+      await loadAllCustomers();
       await loadAssignedCustomers();
       
-    } catch (error) {
-      console.error('Error during component initialization:', error);
+      isComponentReady = true;
+      console.log('HourLog component initialized successfully');
+      
+    } catch (err) {
+      console.error('Error initializing HourLog component:', err);
+      error = err.message;
     } finally {
       isInitializing = false;
     }
-  });
-  
-  // Cleanup subscriptions
-  onDestroy(() => {
-    if (unsubscribeUser) unsubscribeUser();
-    if (unsubscribeUserName) unsubscribeUserName();
-  });
+  }
   
   // Load all customers
   async function loadAllCustomers() {
     try {
       const records = await pb.collection('kunder').getFullList({
-        sort: 'navn' // Sort by name for better UX
+        sort: 'navn'
       });
       allCustomers = records;
-    } catch (error) {
-      console.error('Error loading customers:', error);
+    } catch (err) {
+      console.error('Error loading customers:', err);
       allCustomers = [];
+      throw new Error('Failed to load customers');
     }
   }
   
   // Load customers assigned to current user
   async function loadAssignedCustomers() {
     try {
-      const user = getCurrentUser();
-      
-      if (!user?.id) {
+      if (!userInfoValue.isAuthenticated || !userInfoValue.id) {
         assignedCustomers = [];
         return;
       }
@@ -135,8 +122,8 @@
       
       // Get user assignments
       const assignments = await pb.collection('user_customer_assignments').getFullList({
-        filter: `user = "${user.id}"`,
-        fields: 'kunde' // Only fetch the kunde field
+        filter: `user = "${userInfoValue.id}"`,
+        fields: 'kunde'
       });
       
       if (assignments.length === 0) {
@@ -150,13 +137,13 @@
         assignedIds.has(customer.id)
       );
       
-    } catch (error) {
-      console.error('Error loading assigned customers:', error);
+    } catch (err) {
+      console.error('Error loading assigned customers:', err);
       assignedCustomers = [];
     }
   }
   
-  // Optimized time conversion functions
+  // Time conversion functions
   function timeToMinutes(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return 0;
     
@@ -179,7 +166,7 @@
     return hours + decimalPart;
   }
   
-  // Calculate totals (reactive)
+  // Calculate totals
   function calculateTotals() {
     if (!formData.startTime || !formData.endTime) {
       totalHours = 0;
@@ -202,7 +189,7 @@
     totalPrice = selectedCustomer ? totalHours * selectedCustomer.timepris : 0;
   }
   
-  // Reactive statements for auto-calculation
+  // Reactive calculations
   $: if (formData.startTime || formData.endTime || selectedCustomer) {
     calculateTotals();
   }
@@ -259,14 +246,14 @@
     isLoading = true;
     
     try {
-      const user = getCurrentUser();
-      const userName = getCurrentUserName();
+      // Ensure user is authenticated
+      const user = requireAuth();
       
       const logData = {
         kunde_id: selectedCustomer.id,
         kunde_navn: selectedCustomer.navn,
-        user: user?.id || null,
-        user_name: userName || 'Anonymous User',
+        user: user.id,
+        user_name: userInfoValue.name,
         dato: new Date(formData.date).toISOString(),
         start: timeToMinutes(formData.startTime),
         slut: timeToMinutes(formData.endTime),
@@ -281,28 +268,26 @@
       showSuccessMessage();
       closeModal();
       
-      // Optional: Dispatch custom event instead of page reload
+      // Dispatch custom event
       window.dispatchEvent(new CustomEvent('hoursLogged', { 
         detail: logData 
       }));
       
-    } catch (error) {
-      console.error('Error logging hours:', error);
-      alert(`Error logging hours: ${error.message}`);
+    } catch (err) {
+      console.error('Error logging hours:', err);
+      alert(`Error logging hours: ${err.message}`);
     } finally {
       isLoading = false;
     }
   }
   
-  // Show success message instead of page reload
+  // Show success message
   function showSuccessMessage() {
-    // Create a temporary success notification
     const notification = document.createElement('div');
     notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
     notification.textContent = 'Hours logged successfully!';
     document.body.appendChild(notification);
     
-    // Remove after 3 seconds
     setTimeout(() => {
       if (notification.parentNode) {
         notification.parentNode.removeChild(notification);
@@ -325,10 +310,21 @@
   
   // Modal controls
   function openModal() {
+    if (!isComponentReady) {
+      alert('Component is still loading. Please wait.');
+      return;
+    }
+    
+    if (!userInfoValue.isAuthenticated) {
+      alert('You must be logged in to log hours.');
+      return;
+    }
+    
     if (assignedCustomers.length === 0 && !isAdmin) {
       alert('No customers are assigned to you. Please contact your administrator.');
       return;
     }
+    
     showModal = true;
   }
   
@@ -349,6 +345,17 @@
       closeModal();
     }
   }
+  
+  // Component lifecycle
+  onMount(async () => {
+    await initializeComponent();
+  });
+  
+  onDestroy(() => {
+    if (unsubscribeUserInfo) {
+      unsubscribeUserInfo();
+    }
+  });
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -358,13 +365,28 @@
   <button 
     on:click={openModal}
     class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-    disabled={isInitializing}
+    disabled={isInitializing || !isComponentReady || !userInfoValue.isAuthenticated}
   >
     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
     </svg>
-    {isInitializing ? 'Loading...' : 'Log Hours'}
+    {#if isInitializing}
+      Loading...
+    {:else if error}
+      Error
+    {:else if !userInfoValue.isAuthenticated}
+      Not Authenticated
+    {:else}
+      Log Hours
+    {/if}
   </button>
+  
+  <!-- Error Message -->
+  {#if error}
+    <div class="mt-2 p-2 bg-red-100 text-red-700 rounded text-sm" transition:fade>
+      {error}
+    </div>
+  {/if}
   
   <!-- Modal -->
   {#if showModal}
@@ -374,6 +396,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      transition:fade
     >
       <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 id="modal-title" class="text-xl font-bold mb-4">Log Hours</h2>
@@ -404,7 +427,7 @@
               </p>
             {/if}
             
-            {#if assignedCustomers.length === 0 && !isAdmin && !isInitializing}
+            {#if assignedCustomers.length === 0 && !isAdmin && isComponentReady}
               <p class="mt-1 text-sm text-red-600">
                 No customers assigned. Contact your administrator.
               </p>

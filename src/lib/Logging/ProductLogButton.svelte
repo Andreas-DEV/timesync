@@ -4,7 +4,7 @@
   import PocketBase from 'pocketbase';
   
   // Props
-  export let pocketbaseUrl = 'https://your-pocketbase-url.com'; // Your PocketBase URL
+  export let pocketbaseUrl = 'https://timesync.pockethost.io'; // Your PocketBase URL
   export let onSuccess = () => {}; // Optional callback for when logging is successful
   
   // Initialize PocketBase instance

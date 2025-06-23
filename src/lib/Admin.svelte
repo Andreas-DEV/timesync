@@ -2,7 +2,6 @@
     import { onMount } from "svelte";
     import HourLogList from "./HourLogList.svelte";
     import ProductLogButton from "./Logging/ProductLogButton.svelte";
-    import ProductLogsCalendar from "./Logging/ProductLogsCalendar.svelte";
     import ActivityDashboard from "./ActivityDashboard.svelte";
     import HourLog from "./Logging/HourLog.svelte";
     import UserManangement from "../lib/Management/UserManangement.svelte";

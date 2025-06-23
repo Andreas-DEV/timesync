@@ -1,15 +1,15 @@
+<!-- SelfAbsenceButton.svelte - Fixed version -->
 <script>
-  import { onMount, createEventDispatcher } from "svelte";
-  
-  // Props passed from parent component
-  export let pb = null;
-  export let userData = null;
-  export let userName = "";
+  import { onMount, onDestroy, createEventDispatcher } from "svelte";
+  import { pb, userInfo, initializeUser, requireAuth } from '$lib/stores/userStore';
+  import { fade } from 'svelte/transition';
   
   const dispatch = createEventDispatcher();
   
-  let isLoading = false;
+  // Component state
   let isComponentReady = false;
+  let isLoading = false;
+  let error = null;
   let showModal = false;
   let absenceType = "";
   let startTime = "";
@@ -18,6 +18,12 @@
   let comment = "";
   let submitError = "";
   let submitSuccess = "";
+
+  // User info reactive
+  let userInfoValue = { user: null, name: 'Anonymous User', isAuthenticated: false, id: null };
+  
+  // Store subscriptions
+  let unsubscribeUserInfo;
 
   // Absence types - matching your collection field options
   const absenceTypes = [
@@ -28,42 +34,47 @@
     { value: "Syg på arbejde", label: "Syg på arbejde" }
   ];
 
-  onMount(async () => {
+  // Subscribe to user info store
+  function subscribeToStores() {
+    unsubscribeUserInfo = userInfo.subscribe(value => {
+      userInfoValue = value;
+    });
+  }
+  
+  // Initialize component
+  async function initializeComponent() {
     try {
-      // Wait a bit to ensure parent component has fully loaded
-      await new Promise(resolve => setTimeout(resolve, 100));
+      error = null;
       
-      // Validate that we have the required props
-      if (!pb) {
-        console.error("SelfAbsenceButton: PocketBase instance not provided");
-        return;
+      // Subscribe to stores first
+      subscribeToStores();
+      
+      // Initialize user authentication
+      await initializeUser();
+      
+      // Check authentication
+      if (!userInfoValue.isAuthenticated) {
+        throw new Error('User authentication required');
       }
-      
-      if (!userData || !userData.id) {
-        console.error("SelfAbsenceButton: Valid user data not provided");
-        return;
-      }
-      
-      // Verify PocketBase connection
-      if (!pb.authStore.isValid) {
-        console.error("SelfAbsenceButton: User not authenticated");
-        return;
-      }
-      
-      console.log("SelfAbsenceButton: Component initialized successfully");
-      console.log("User data:", userData);
-      console.log("User name:", userName);
       
       isComponentReady = true;
+      console.log('SelfAbsenceButton initialized successfully');
+      console.log('User data:', userInfoValue);
       
-    } catch (error) {
-      console.error("Error initializing SelfAbsenceButton:", error);
+    } catch (err) {
+      console.error('Error initializing SelfAbsenceButton:', err);
+      error = err.message;
     }
-  });
+  }
 
   function openModal() {
     if (!isComponentReady) {
       console.error("Component not ready yet");
+      return;
+    }
+    
+    if (!userInfoValue.isAuthenticated) {
+      alert('You must be logged in to log absence.');
       return;
     }
     
@@ -84,7 +95,7 @@
   }
 
   async function submitAbsenceRequest() {
-    if (!isComponentReady || !pb || !userData) {
+    if (!isComponentReady) {
       submitError = "System not ready. Please try again.";
       return;
     }
@@ -106,9 +117,12 @@
     submitSuccess = "";
 
     try {
+      // Ensure user is authenticated
+      const user = requireAuth();
+      
       // Create absence log record - matching your collection schema
       const absenceData = {
-        user: userData.id,  // This should be the relation field to users collection
+        user: user.id,  // This should be the relation field to users collection
         absence_type: absenceType,
         start_time: startTime,
         end_time: endTime,
@@ -118,14 +132,14 @@
 
       console.log("Submitting absence request:", absenceData);
 
-      // Submit to absence_logs collection (correct collection name)
+      // Submit to absence_logs collection
       const result = await pb.collection('absence_logs').create(absenceData);
       
       console.log("Absence request created:", result);
       
       submitSuccess = "Absence request submitted successfully!";
       
-      // Close modal immediately after successful submission
+      // Close modal after successful submission
       setTimeout(() => {
         closeModal();
         // Dispatch event to parent if needed
@@ -151,31 +165,73 @@
 
   // Handle keyboard events
   function handleKeydown(event) {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && showModal) {
       closeModal();
     }
   }
+  
+  // Component lifecycle
+  onMount(async () => {
+    await initializeComponent();
+  });
+  
+  onDestroy(() => {
+    if (unsubscribeUserInfo) {
+      unsubscribeUserInfo();
+    }
+  });
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
-{#if isComponentReady}
-  <div class="self-absence-container">
+<!-- Loading State -->
+{#if !isComponentReady}
+  <div class="px-4 py-2 bg-gray-200 text-gray-500 rounded-lg" transition:fade>
+    <div class="flex items-center gap-2">
+      <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      {#if error}
+        Error: {error}
+      {:else}
+        Loading...
+      {/if}
+    </div>
+  </div>
+
+<!-- Authentication Required -->
+{:else if !userInfoValue.isAuthenticated}
+  <div class="px-4 py-2 bg-yellow-200 text-yellow-700 rounded-lg" transition:fade>
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+      </svg>
+      Not Authenticated
+    </div>
+  </div>
+
+<!-- Component Ready -->
+{:else}
+  <div class="self-absence-container" transition:fade>
     <!-- Trigger Button -->
     <button
-      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer"
+      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       on:click={openModal}
       disabled={isLoading}
     >
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-      <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-    </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+      </svg>
       Log Absence
     </button>
 
     <!-- Modal -->
     {#if showModal}
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" on:click={closeModal}>
+      <div 
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" 
+        on:click={closeModal}
+        transition:fade
+      >
         <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4" on:click|stopPropagation>
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-semibold text-gray-900">Log Absence</h2>
@@ -187,6 +243,11 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+
+          <!-- User Info Display -->
+          <div class="bg-blue-50 p-3 rounded mb-4">
+            <p class="text-sm font-medium text-blue-800">Logging absence for: {userInfoValue.name}</p>
           </div>
 
           <form on:submit|preventDefault={submitAbsenceRequest} class="space-y-4">
@@ -201,6 +262,7 @@
                 bind:value={date}
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -214,6 +276,7 @@
                 bind:value={absenceType}
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
+                disabled={isLoading}
               >
                 <option value="">Select absence type</option>
                 {#each absenceTypes as type}
@@ -233,6 +296,7 @@
                 bind:value={startTime}
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -247,6 +311,7 @@
                 bind:value={endTime}
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -262,6 +327,7 @@
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 rows="3"
                 required
+                disabled={isLoading}
               ></textarea>
             </div>
 
@@ -296,7 +362,8 @@
               >
                 {#if isLoading}
                   <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" class="opacity-25"></circle>
+                    <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   Submitting...
                 {:else}
@@ -308,16 +375,6 @@
         </div>
       </div>
     {/if}
-  </div>
-{:else}
-  <!-- Loading state -->
-  <div class="px-4 py-2 bg-gray-200 text-gray-500 rounded-lg">
-    <div class="flex items-center gap-2">
-      <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
-      Loading...
-    </div>
   </div>
 {/if}
 
