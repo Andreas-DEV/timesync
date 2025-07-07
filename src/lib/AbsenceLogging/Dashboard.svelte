@@ -17,10 +17,12 @@
 	let loginData = { email: '', password: '' };
 	let loginError = '';
 
-	// Form data
+	// Form data - updated to support date ranges
 	let absenceData = {
 		absence_type: '',
-		date: new Date().toISOString().split('T')[0],
+		date: new Date().toISOString().split('T')[0], // For single day (Syg på arbejde)
+		start_date: new Date().toISOString().split('T')[0], // For date ranges
+		end_date: new Date().toISOString().split('T')[0], // For date ranges
 		start_time: '',
 		end_time: '',
 		comment: ''
@@ -77,9 +79,12 @@
 	function handleWorkerClick(worker) {
 		selectedWorker = worker;
 		showModal = true;
+		const today = new Date().toISOString().split('T')[0];
 		absenceData = {
 			absence_type: '',
-			date: new Date().toISOString().split('T')[0],
+			date: today,
+			start_date: today,
+			end_date: today,
 			start_time: '',
 			end_time: '',
 			comment: ''
@@ -98,29 +103,102 @@
 		}, 4000);
 	}
 
+	// Helper function to generate date range
+	function getDateRange(startDate, endDate) {
+		const dates = [];
+		const start = new Date(startDate);
+		const end = new Date(endDate);
+		
+		while (start <= end) {
+			dates.push(new Date(start).toISOString().split('T')[0]);
+			start.setDate(start.getDate() + 1);
+		}
+		
+		return dates;
+	}
+
+	// Helper function to calculate number of days
+	function getDayCount(startDate, endDate) {
+		const start = new Date(startDate);
+		const end = new Date(endDate);
+		const timeDiff = end.getTime() - start.getTime();
+		return Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
+	}
+
+	// Validation function
+	function validateDates() {
+		const startDate = new Date(absenceData.start_date);
+		const endDate = new Date(absenceData.end_date);
+		
+		if (endDate < startDate) {
+			showToast('End date cannot be before start date', 'error');
+			return false;
+		}
+		
+		return true;
+	}
+
 	async function submitAbsence() {
-		if (!absenceData.absence_type || !absenceData.date) {
-			showToast('Please fill in all required fields', 'error');
+		// Validation based on absence type
+		if (!absenceData.absence_type) {
+			showToast('Please select an absence type', 'error');
 			return;
+		}
+
+		if (absenceData.absence_type === 'Syg på arbejde') {
+			if (!absenceData.date) {
+				showToast('Please select a date', 'error');
+				return;
+			}
+		} else {
+			if (!absenceData.start_date || !absenceData.end_date) {
+				showToast('Please select start and end dates', 'error');
+				return;
+			}
+			if (!validateDates()) {
+				return;
+			}
 		}
 
 		submitting = true;
 		try {
-			const data = {
-				user: selectedWorker.id,
-				absence_type: absenceData.absence_type,
-				date: absenceData.date,
-				comment: absenceData.comment
-			};
-
 			if (absenceData.absence_type === 'Syg på arbejde') {
+				// Single day record for "Syg på arbejde" - use date field only
+				const data = {
+					user: selectedWorker.id,
+					absence_type: absenceData.absence_type,
+					date: absenceData.date,
+					comment: absenceData.comment
+				};
+
 				if (absenceData.start_time) data.start_time = absenceData.start_time;
 				if (absenceData.end_time) data.end_time = absenceData.end_time;
-			}
 
-			await pb.collection('absence_logs').create(data);
+				await pb.collection('absence_logs').create(data);
+				
+				showToast(`Absence registered successfully for ${selectedWorker.name || selectedWorker.email.split('@')[0]}!`, 'success');
+			} else {
+				// Single record with date range for other absence types
+				const data = {
+					user: selectedWorker.id,
+					absence_type: absenceData.absence_type,
+					start_date: absenceData.start_date,
+					end_date: absenceData.end_date,
+					comment: absenceData.comment
+				};
+
+				// For single day ranges, also set the date field for compatibility
+				if (absenceData.start_date === absenceData.end_date) {
+					data.date = absenceData.start_date;
+				}
+
+				await pb.collection('absence_logs').create(data);
+				
+				const dayCount = getDayCount(absenceData.start_date, absenceData.end_date);
+				const dayText = dayCount === 1 ? 'day' : 'days';
+				showToast(`Absence registered successfully for ${selectedWorker.name || selectedWorker.email.split('@')[0]} (${dayCount} ${dayText})!`, 'success');
+			}
 			
-			showToast(`Absence registered successfully for ${selectedWorker.name || selectedWorker.email.split('@')[0]}!`, 'success');
 			closeModal();
 		} catch (err) {
 			console.error('Error registering absence:', err);
@@ -144,6 +222,11 @@
 			return `https://timesync.pockethost.io/api/files/users/${worker.id}/${worker.avatar}`;
 		}
 		return null;
+	}
+
+	// Reactive statement to update end date when start date changes (only for non-sick-at-work types)
+	$: if (absenceData.absence_type !== 'Syg på arbejde' && absenceData.start_date && absenceData.end_date && new Date(absenceData.end_date) < new Date(absenceData.start_date)) {
+		absenceData.end_date = absenceData.start_date;
 	}
 </script>
 
@@ -244,7 +327,52 @@
 </div>
 
 <!-- Login Modal -->
+{#if showLoginModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+		<div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+			<div class="flex items-center justify-between pb-3 border-b">
+				<h3 class="text-lg font-medium text-gray-900">Login Required</h3>
+			</div>
 
+			<div class="py-4 space-y-4">
+				<div>
+					<label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+					<input
+						type="email"
+						id="email"
+						bind:value={loginData.email}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						required
+					/>
+				</div>
+
+				<div>
+					<label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+					<input
+						type="password"
+						id="password"
+						bind:value={loginData.password}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						required
+					/>
+				</div>
+
+				{#if loginError}
+					<div class="text-red-600 text-sm">{loginError}</div>
+				{/if}
+			</div>
+
+			<div class="flex items-center justify-end pt-3 border-t">
+				<button
+					on:click={login}
+					class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+				>
+					Login
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <!-- Absence Registration Modal -->
 {#if showModal && selectedWorker}
@@ -262,17 +390,7 @@
 			</div>
 
 			<div class="py-4 space-y-4">
-				<div>
-					<label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-					<input
-						type="date"
-						id="date"
-						bind:value={absenceData.date}
-						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						required
-					/>
-				</div>
-
+				<!-- Absence Type Selection -->
 				<div>
 					<label for="absence_type" class="block text-sm font-medium text-gray-700 mb-1">Absence Type *</label>
 					<select
@@ -288,6 +406,55 @@
 					</select>
 				</div>
 
+				<!-- Date Section - conditional based on absence type -->
+				{#if absenceData.absence_type === 'Syg på arbejde'}
+					<!-- Single Date for "Syg på arbejde" -->
+					<div>
+						<label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+						<input
+							type="date"
+							id="date"
+							bind:value={absenceData.date}
+							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							required
+						/>
+					</div>
+				{:else if absenceData.absence_type}
+					<!-- Date Range for other absence types -->
+					<div class="space-y-3">
+						<div>
+							<label for="start_date" class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+							<input
+								type="date"
+								id="start_date"
+								bind:value={absenceData.start_date}
+								class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+								required
+							/>
+						</div>
+
+						<div>
+							<label for="end_date" class="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+							<input
+								type="date"
+								id="end_date"
+								bind:value={absenceData.end_date}
+								min={absenceData.start_date}
+								class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+								required
+							/>
+						</div>
+
+						<!-- Duration Display -->
+						{#if absenceData.start_date && absenceData.end_date}
+							<div class="text-sm text-gray-600 bg-gray-50 p-2 rounded-md">
+								Duration: {getDayCount(absenceData.start_date, absenceData.end_date)} day{getDayCount(absenceData.start_date, absenceData.end_date) > 1 ? 's' : ''}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Time Details for "Syg på arbejde" -->
 				{#if absenceData.absence_type === 'Syg på arbejde'}
 					<div class="space-y-3 p-3 bg-gray-50 rounded-md">
 						<h4 class="text-sm font-medium text-gray-700">Time Details</h4>
@@ -314,6 +481,7 @@
 					</div>
 				{/if}
 
+				<!-- Comment Section -->
 				<div>
 					<label for="comment" class="block text-sm font-medium text-gray-700 mb-1">Comment</label>
 					<textarea

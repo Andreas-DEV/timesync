@@ -53,37 +53,82 @@
 		return days;
 	})();
 
-	// Get absences for a specific date
+	// Get absences for a specific date - now handles both single dates and date ranges
 	function getAbsencesForDate(day) {
 		if (!day) return [];
 		
 		const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+		const targetDate = new Date(dateStr);
 		
 		const dayAbsences = absenceLogs.filter(log => {
-			// Extract just the date part from the log.date (remove time component)
-			const logDateOnly = log.date.split(' ')[0]; // "2025-06-05 00:00:00.000Z" -> "2025-06-05"
-			return logDateOnly === dateStr;
+			// Handle "Syg på arbejde" which uses single date field
+			if (log.absence_type === 'Syg på arbejde' && log.date) {
+				const logDate = new Date(log.date.split(' ')[0]);
+				return logDate.getTime() === targetDate.getTime();
+			}
+			
+			// Handle other absence types that use date ranges
+			if (log.start_date && log.end_date) {
+				const startDate = new Date(log.start_date);
+				const endDate = new Date(log.end_date);
+				
+				// Check if current date falls within the range (inclusive)
+				return targetDate.getTime() >= startDate.getTime() && targetDate.getTime() <= endDate.getTime();
+			}
+			
+			// Fallback for any records that might still use the old date field
+			if (log.date && !log.start_date && !log.end_date) {
+				const logDate = new Date(log.date.split(' ')[0]);
+				return logDate.getTime() === targetDate.getTime();
+			}
+			
+			return false;
 		});
 		
 		return dayAbsences;
 	}
 
+	// Check if a date is part of a multi-day absence range
+	function isPartOfRange(record) {
+		if (!record.start_date || !record.end_date) return false;
+		return record.start_date !== record.end_date;
+	}
+
+	// Check if this is the first day of a range for a specific calendar day
+	function isRangeStart(record, day) {
+		if (!isPartOfRange(record)) return false;
+		const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+		return record.start_date === dateStr;
+	}
+
+	// Check if this is the last day of a range for a specific calendar day
+	function isRangeEnd(record, day) {
+		if (!isPartOfRange(record)) return false;
+		const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+		return record.end_date === dateStr;
+	}
+
+	// Check if this day is in the middle of a range
+	function isRangeMiddle(record, day) {
+		if (!isPartOfRange(record)) return false;
+		const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+		return dateStr > record.start_date && dateStr < record.end_date;
+	}
+
 	// Navigate months
 	function previousMonth() {
 		currentDate = new Date(currentYear, currentMonth - 1, 1);
-		// Call fetchAbsences with a slight delay to ensure reactive variables update
 		setTimeout(() => fetchAbsences(), 0);
 	}
 
 	function nextMonth() {
 		currentDate = new Date(currentYear, currentMonth + 1, 1);
-		// Call fetchAbsences with a slight delay to ensure reactive variables update
 		setTimeout(() => fetchAbsences(), 0);
 	}
 
 	// Handle mouse events for tooltip
-	function handleMouseEnter(event, absence) {
-		hoveredAbsence = absence;
+	function handleMouseEnter(event, record) {
+		hoveredAbsence = record;
 		updateMousePosition(event);
 	}
 
@@ -105,8 +150,8 @@
 	}
 
 	// Handle double click on absence entry
-	function handleAbsenceDoubleClick(absence) {
-		absenceToDelete = absence;
+	function handleAbsenceDoubleClick(record) {
+		absenceToDelete = record;
 		showDeleteModal = true;
 	}
 
@@ -142,23 +187,39 @@
 	async function fetchAbsences() {
 		loading = true;
 		try {
-			// Calculate days in month directly to ensure it's current
-			const daysInCurrentMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-			
-			// Get first and last day of the month
-			const firstDay = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-			const lastDay = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(daysInCurrentMonth).padStart(2, '0')}`;
-			
 			// Get all records with user expansion
 			const records = await pb.collection('absence_logs').getFullList({
-				sort: '-date',
+				sort: '-created',
 				expand: 'user'
 			});
 			
-			// Filter client-side for current month
+			// Filter to include records that are relevant to current month
+			const currentMonthStart = new Date(currentYear, currentMonth, 1);
+			const currentMonthEnd = new Date(currentYear, currentMonth + 1, 0);
+			
 			const filteredRecords = records.filter(record => {
-				const logDateOnly = record.date.split(' ')[0];
-				return logDateOnly >= firstDay && logDateOnly <= lastDay;
+				// Handle "Syg på arbejde" with single date
+				if (record.absence_type === 'Syg på arbejde' && record.date) {
+					const recordDate = new Date(record.date.split(' ')[0]);
+					return recordDate >= currentMonthStart && recordDate <= currentMonthEnd;
+				}
+				
+				// Handle date range absences
+				if (record.start_date && record.end_date) {
+					const startDate = new Date(record.start_date);
+					const endDate = new Date(record.end_date);
+					
+					// Check if the range overlaps with the current month
+					return (startDate <= currentMonthEnd && endDate >= currentMonthStart);
+				}
+				
+				// Fallback for any old records using date field
+				if (record.date && !record.start_date && !record.end_date) {
+					const recordDate = new Date(record.date.split(' ')[0]);
+					return recordDate >= currentMonthStart && recordDate <= currentMonthEnd;
+				}
+				
+				return false;
 			});
 			
 			absenceLogs = filteredRecords;
@@ -194,14 +255,25 @@
 			'Syg på arbejde': 0
 		};
 		
-		// Count each type
-		absenceLogs.forEach(log => {
-			if (stats.hasOwnProperty(log.absence_type)) {
-				stats[log.absence_type]++;
+		// Count each type - but count range absences only once, not per day
+		absenceLogs.forEach(record => {
+			if (stats.hasOwnProperty(record.absence_type)) {
+				// For range absences, calculate total days in range
+				if (record.start_date && record.end_date && record.absence_type !== 'Syg på arbejde') {
+					const startDate = new Date(record.start_date);
+					const endDate = new Date(record.end_date);
+					const timeDiff = endDate.getTime() - startDate.getTime();
+					const dayCount = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
+					stats[record.absence_type] += dayCount;
+				} else {
+					// Single day absence
+					stats[record.absence_type]++;
+				}
 			}
 		});
 		
-		totalCount = absenceLogs.length;
+		// Calculate total count (sum of all absence days)
+		totalCount = Object.values(stats).reduce((sum, count) => sum + count, 0);
 	}
 
 	onMount(() => {
@@ -291,15 +363,28 @@
 						
 						<!-- Absences for this day -->
 						<div class="space-y-1">
-							{#each getAbsencesForDate(day) as absence (absence.id)}
+							{#each getAbsencesForDate(day) as record (record.id)}
 								<div
-									class="text-xs px-2 py-1 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm select-none {absenceColors[absence.absence_type] || 'bg-gray-100 border-gray-300 text-gray-800'}"
-									on:mouseenter={(e) => handleMouseEnter(e, absence)}
+									class="text-xs px-2 py-1 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm select-none relative {absenceColors[record.absence_type] || 'bg-gray-100 border-gray-300 text-gray-800'}"
+									on:mouseenter={(e) => handleMouseEnter(e, record)}
 									on:mouseleave={handleMouseLeave}
-									on:dblclick={() => handleAbsenceDoubleClick(absence)}
+									on:dblclick={() => handleAbsenceDoubleClick(record)}
 									title="Double-click to delete"
 								>
-									{getAbsenceAbbreviation(absence.absence_type)}
+									<div class="flex items-center justify-between">
+										<span>{getAbsenceAbbreviation(record.absence_type)}</span>
+										{#if isPartOfRange(record)}
+											<div class="flex space-x-1">
+												{#if isRangeStart(record, day)}
+													<span class="text-xs">►</span>
+												{:else if isRangeEnd(record, day)}
+													<span class="text-xs">◄</span>
+												{:else if isRangeMiddle(record, day)}
+													<span class="text-xs">─</span>
+												{/if}
+											</div>
+										{/if}
+									</div>
 								</div>
 							{/each}
 						</div>
@@ -316,6 +401,22 @@
 					<span class="text-xs text-gray-600">{type}</span>
 				</div>
 			{/each}
+		</div>
+
+		<!-- Range Legend -->
+		<div class="mt-4 flex items-center justify-center space-x-6 text-xs text-gray-600">
+			<div class="flex items-center space-x-1">
+				<span>►</span>
+				<span>Range Start</span>
+			</div>
+			<div class="flex items-center space-x-1">
+				<span>─</span>
+				<span>Range Middle</span>
+			</div>
+			<div class="flex items-center space-x-1">
+				<span>◄</span>
+				<span>Range End</span>
+			</div>
 		</div>
 
 		<!-- Monthly Statistics -->
@@ -392,9 +493,26 @@
 		<div class="text-gray-300">
 			{hoveredAbsence.absence_type}
 		</div>
+		
+		<!-- Date Information -->
 		<div class="text-gray-400 text-xs">
-			{new Date(hoveredAbsence.date).toLocaleDateString()}
+			{#if hoveredAbsence.absence_type === 'Syg på arbejde' && hoveredAbsence.date}
+				{new Date(hoveredAbsence.date).toLocaleDateString()}
+			{:else if hoveredAbsence.start_date && hoveredAbsence.end_date}
+				{#if hoveredAbsence.start_date === hoveredAbsence.end_date}
+					{new Date(hoveredAbsence.start_date).toLocaleDateString()}
+				{:else}
+					{new Date(hoveredAbsence.start_date).toLocaleDateString()} - {new Date(hoveredAbsence.end_date).toLocaleDateString()}
+					{@const startDate = new Date(hoveredAbsence.start_date)}
+					{@const endDate = new Date(hoveredAbsence.end_date)}
+					{@const dayCount = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1}
+					<div class="text-xs text-gray-500">({dayCount} days)</div>
+				{/if}
+			{:else if hoveredAbsence.date}
+				{new Date(hoveredAbsence.date).toLocaleDateString()}
+			{/if}
 		</div>
+		
 		{#if hoveredAbsence.comment}
 			<div class="text-gray-300 text-xs mt-1 border-t border-gray-700 pt-1">
 				{hoveredAbsence.comment}
@@ -403,7 +521,7 @@
 		{#if hoveredAbsence.start_time || hoveredAbsence.end_time}
 			<div class="text-gray-300 text-xs mt-1">
 				{#if hoveredAbsence.start_time}Left: {hoveredAbsence.start_time}{/if}
-				{#if hoveredAbsence.end_time}End: {hoveredAbsence.end_time}{/if}
+				{#if hoveredAbsence.end_time} End: {hoveredAbsence.end_time}{/if}
 			</div>
 		{/if}
 	</div>
@@ -437,9 +555,26 @@
 						<div class="text-gray-600 mt-1">
 							{absenceToDelete.absence_type}
 						</div>
+						
+						<!-- Date display for delete modal -->
 						<div class="text-gray-500 text-xs mt-1">
-							{new Date(absenceToDelete.date).toLocaleDateString()}
+							{#if absenceToDelete.absence_type === 'Syg på arbejde' && absenceToDelete.date}
+								{new Date(absenceToDelete.date).toLocaleDateString()}
+							{:else if absenceToDelete.start_date && absenceToDelete.end_date}
+								{#if absenceToDelete.start_date === absenceToDelete.end_date}
+									{new Date(absenceToDelete.start_date).toLocaleDateString()}
+								{:else}
+									{new Date(absenceToDelete.start_date).toLocaleDateString()} - {new Date(absenceToDelete.end_date).toLocaleDateString()}
+									{@const startDate = new Date(absenceToDelete.start_date)}
+									{@const endDate = new Date(absenceToDelete.end_date)}
+									{@const dayCount = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1}
+									<div class="text-amber-600 font-medium mt-1">Will delete entire {dayCount}-day period</div>
+								{/if}
+							{:else if absenceToDelete.date}
+								{new Date(absenceToDelete.date).toLocaleDateString()}
+							{/if}
 						</div>
+						
 						{#if absenceToDelete.comment}
 							<div class="text-gray-600 text-xs mt-2 border-t border-gray-200 pt-2">
 								{absenceToDelete.comment}
