@@ -489,6 +489,17 @@
 		<div class="font-medium">
 			{hoveredHours.expand?.user?.name || hoveredHours.expand?.user?.email?.split('@')[0] || hoveredHours.user_name || 'Unknown User'}
 		</div>
+		
+		<!-- Show employee number and loentermin -->
+		<div class="text-gray-400 text-xs">
+			{#if hoveredHours.expand?.user?.medarbejdernr}
+				Employee #{hoveredHours.expand.user.medarbejdernr}
+			{/if}
+			{#if hoveredHours.expand?.user?.loentermin}
+				<br>{hoveredHours.expand.user.loentermin}
+			{/if}
+		</div>
+		
         <div class="text-gray-400 text-xs pb-2">
             {new Date(hoveredHours.dato).toLocaleDateString()}
         </div>
@@ -528,6 +539,19 @@
 						<div class="font-medium text-gray-900">
 							{hoursToDelete.expand?.user?.name || hoursToDelete.expand?.user?.email?.split('@')[0] || hoursToDelete.user_name || 'Unknown User'}
 						</div>
+						
+						<!-- Show employee details in delete modal -->
+						{#if hoursToDelete.expand?.user?.medarbejdernr || hoursToDelete.expand?.user?.loentermin}
+							<div class="text-gray-600 text-xs mt-1">
+								{#if hoursToDelete.expand?.user?.medarbejdernr}
+									Employee #{hoursToDelete.expand.user.medarbejdernr}
+								{/if}
+								{#if hoursToDelete.expand?.user?.loentermin}
+									<br>{hoursToDelete.expand.user.loentermin}
+								{/if}
+							</div>
+						{/if}
+						
 						<div class="text-gray-600 mt-1">
 							{hoursToDelete.totalsum || 0} hours
 						</div>

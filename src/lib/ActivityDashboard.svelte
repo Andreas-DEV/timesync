@@ -2335,7 +2335,7 @@
                     <td class="px-6 py-4">
                       <div 
                         class="max-w-xs truncate cursor-pointer hover:bg-gray-100 rounded px-1 py-1 transition-colors" 
-                        title={log.kommentar ? `${log.kommentar} (Double-click to copy)` : "No comment"}
+                        title={log.kommentar ? `${log.kommentar}` : "No comment"}
                         on:click={() => copyToClipboard(log.kommentar)}
                       >
                         {log.kommentar || "—"}
@@ -2543,7 +2543,7 @@
                     <td class="px-6 py-4">
                       <div 
                         class="max-w-xs truncate cursor-pointer hover:bg-gray-100 rounded px-1 py-1 transition-colors" 
-                        title={log.comment ? `${log.comment} (Double-click to copy)` : "No comment"}
+                        title={log.comment ? `${log.comment}` : "No comment"}
                         on:click={() => copyToClipboard(log.comment)}
                       >
                         {log.comment || "—"}
