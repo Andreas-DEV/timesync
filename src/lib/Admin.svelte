@@ -11,7 +11,6 @@
     // Define admin tools - only include actually implemented components
     const adminTools = [
         { id: "activity", name: "Activity Dashboard" },
-        { id: "user", name: "User Management" },
         { id: "hourlog", name: "Settings" },
         // To add a new component in the future, just add a new entry here:
         // { id: 'newComponent', name: 'New Component Label' }
@@ -58,7 +57,7 @@
             </div>
             <ActivityDashboard />
         {:else if selectedTool === "user"}
-            <UserManangement />
+            <!-- <UserManangement /> -->
         {:else if selectedTool === "hourlog"}
             <HourLogList />
         {/if}

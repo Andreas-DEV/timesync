@@ -195,6 +195,23 @@
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
   }
 
+  function copyToClipboard(text) {
+  if (!text) return;
+  
+  navigator.clipboard.writeText(text).then(() => {
+    showSuccessToast("Comment copied to clipboard!");
+  }).catch(() => {
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    showSuccessToast("Comment copied to clipboard!");
+  });
+}
+
   // Calculate monthly statistics for hour logs
   function calculateMonthlyHourStats(logsData) {
     console.time("Calculate hour stats");
@@ -2316,7 +2333,11 @@
                       >{log.price.toFixed(2)} kr</td
                     >
                     <td class="px-6 py-4">
-                      <div class="max-w-xs truncate" title={log.kommentar}>
+                      <div 
+                        class="max-w-xs truncate cursor-pointer hover:bg-gray-100 rounded px-1 py-1 transition-colors" 
+                        title={log.kommentar ? `${log.kommentar} (Double-click to copy)` : "No comment"}
+                        on:click={() => copyToClipboard(log.kommentar)}
+                      >
                         {log.kommentar || "—"}
                       </div>
                     </td>
@@ -2520,7 +2541,11 @@
                       >{log.total_price.toFixed(2)} kr</td
                     >
                     <td class="px-6 py-4">
-                      <div class="max-w-xs truncate" title={log.comment}>
+                      <div 
+                        class="max-w-xs truncate cursor-pointer hover:bg-gray-100 rounded px-1 py-1 transition-colors" 
+                        title={log.comment ? `${log.comment} (Double-click to copy)` : "No comment"}
+                        on:click={() => copyToClipboard(log.comment)}
+                      >
                         {log.comment || "—"}
                       </div>
                     </td>

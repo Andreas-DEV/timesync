@@ -11,6 +11,7 @@
   import AbsenceDashboard from "$lib/AbsenceLogging/Dashboard.svelte"
   import AbsenceCalender from "$lib/AbsenceLogging/Calender.svelte"
   import WorkerHoursCalendar from "$lib/Workers/WorkerHoursCalendar.svelte";
+  import UserManangement from "$lib/Management/UserManangement.svelte";
   
   // Import userStore functions
   import { 
@@ -50,6 +51,7 @@
       isDropdown: true,
       subItems: [
         { id: "admin-activity", label: "Activity Dashboard" },
+        { id: "user-management", label: "User Management" },
         { id: "admin-ansogninger", label: "Ansøgninger" },
         { id: "worker-hours", label: "Workers Hours" },
         { 
@@ -184,6 +186,7 @@
   const componentMap = {
     'dashboard': Dashboard,
     'settings': UserSettings,
+    'user-management': UserManangement,
     'admin-activity': Admin,
     'worker-hours': WorkerHoursCalendar,
     'admin-ansogninger': Ansogninger,

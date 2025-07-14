@@ -6,7 +6,7 @@
     import CustomerAssignmentManager from "../lib/Management/CustomerAssignmentManager.svelte"
     import { initializeUser } from './stores/userStore';
   
-    let activeTab = 'manager'; // 'calendar' or 'settings'
+    let activeTab = 'settings'; // 'calendar' or 'settings'
     
     onMount(async () => {
       // Initialize user data
@@ -31,7 +31,7 @@
             >
               Calendar View
             </button> -->
-            <button
+            <!-- <button
               class={`py-4 px-6 font-medium text-sm ${
                 activeTab === 'manager'
                   ? 'border-b-2 border-blue-500 text-blue-600'
@@ -40,7 +40,7 @@
               on:click={() => (activeTab = 'manager')}
             >
               Manager
-            </button>
+            </button> -->
             <button
               class={`py-4 px-6 font-medium text-sm ${
                 activeTab === 'settings'
