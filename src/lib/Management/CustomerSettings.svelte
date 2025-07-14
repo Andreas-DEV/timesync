@@ -16,7 +16,8 @@
   // Pagination
   let customerPage = 1;
   let productPage = 1;
-  const perPage = 5;
+  const customerPerPage = 10; // 10 items per page for customers
+const productPerPage = 5;   // 5 items per page for products
   let customerTotalPages = 0;
   let customerTotalItems = 0;
   let productTotalPages = 0;
@@ -57,7 +58,7 @@
         ? `navn ~ "${customerSearchQuery}"` 
         : '';
       
-      const records = await pb.collection('kunder').getList(customerPage, perPage, {
+        const records = await pb.collection('kunder').getList(customerPage, customerPerPage, {
         sort: 'navn',
         filter: filter
       });
@@ -81,7 +82,7 @@
         ? `productName ~ "${productSearchQuery}"` 
         : '';
       
-      const records = await pb.collection('products').getList(productPage, perPage, {
+        const records = await pb.collection('products').getList(productPage, productPerPage, {
         sort: 'productName',
         filter: filter
       });
@@ -485,7 +486,7 @@
             <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
               <div>
                 <p class="text-sm text-gray-700">
-                  Viser <span class="font-medium">{(customerPage - 1) * perPage + 1}</span> til <span class="font-medium">{Math.min(customerPage * perPage, customerTotalItems)}</span> af <span class="font-medium">{customerTotalItems}</span> kunder
+                  Viser <span class="font-medium">{(customerPage - 1) * customerPerPage + 1}</span> til <span class="font-medium">{Math.min(customerPage * customerPerPage, customerTotalItems)}</span> af <span class="font-medium">{customerTotalItems}</span> kunder
                 </p>
               </div>
               <div>
@@ -670,7 +671,7 @@
             <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
               <div>
                 <p class="text-sm text-gray-700">
-                  Viser <span class="font-medium">{(productPage - 1) * perPage + 1}</span> til <span class="font-medium">{Math.min(productPage * perPage, productTotalItems)}</span> af <span class="font-medium">{productTotalItems}</span> produkter
+                  Viser <span class="font-medium">{(productPage - 1) * productPerPage + 1}</span> til <span class="font-medium">{Math.min(productPage * productPerPage, productTotalItems)}</span> af <span class="font-medium">{productTotalItems}</span> produkter
                 </p>
               </div>
               <div>
