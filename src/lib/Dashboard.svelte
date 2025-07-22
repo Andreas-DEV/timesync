@@ -21,6 +21,8 @@
     import bellNoti from "$lib/assets/icons/bell.png";
     import sendIcon from "$lib/assets/icons/send.png";
 
+    import ActivityWorkers from "./ActivityWorkers.svelte";
+
     import HourLog from "./Logging/HourLog.svelte";
     import ProductLogButton from "./Logging/ProductLogButton.svelte";
     import SelfAbsenceButton from "./AbsenceLogging/SelfAbsenceButton.svelte";
@@ -588,7 +590,7 @@
                     </div>
                 </div>
                 <div class="py-14">
-                    <CvrTjek />
+                    <ActivityWorkers/>
                 </div>
             </div>
         </div>

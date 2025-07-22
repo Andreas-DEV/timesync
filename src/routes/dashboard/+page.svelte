@@ -4,6 +4,8 @@
   import PocketBase from "pocketbase";
   import "../../app.css";
   import Dashboard from "$lib/Dashboard.svelte";
+  import ActivityWorkers from "$lib/ActivityWorkers.svelte";
+  import CvrTjek from "$lib/CvrTjek.svelte";
   import Sidebar from '$lib/Sidebar.svelte';
   import Ansogninger from "$lib/Ansogninger.svelte";
   import UserSettings from "$lib/Management/UserSettings.svelte";
@@ -41,6 +43,7 @@
   // Base site configuration
   const baseSiteLinks = [
     { id: "dashboard", label: "Dashboard" },
+    { id: "cvrtjek", label: "CVR Tjek" },
     { id: "settings", label: "Settings" }
   ];
 
@@ -185,6 +188,7 @@
   // Component mapping for cleaner rendering
   const componentMap = {
     'dashboard': Dashboard,
+    'cvrtjek': CvrTjek,
     'settings': UserSettings,
     'user-management': UserManangement,
     'admin-activity': Admin,

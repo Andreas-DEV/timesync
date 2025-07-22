@@ -15,6 +15,7 @@
     
     export let siteLinks = [
         { id: "dashboard", label: "Dashboard" },
+        { id: "activity", label: "Activity" },
         { id: "settings", label: "Settings" },
         { 
             id: "admin", 
