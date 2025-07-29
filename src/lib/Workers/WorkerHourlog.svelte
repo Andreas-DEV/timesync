@@ -10,11 +10,16 @@
     let date = new Date().toISOString().split('T')[0];
     let startTime = ""; // Use string format for the inputs
     let endTime = "";
-    let comment = '';
+
     let totalHours = 0;
+    let totalHoursWithoutBreak = 0; // New variable to show hours after break deduction
+    let regularHours = 0; // Regular hours (up to 8)
+    let overtimeHours = 0; // Overtime hours (anything over 8)
     let userNameValue = "Anonymous User"; // Default value
     let currentUserValue = null;
     let isLoading = false; // Flag to track loading state
+    
+    const BREAK_TIME_HOURS = 0.50; // 30 minutes break time
     
     // Subscribe to the user store
     const unsubscribeUser = currentUser.subscribe(value => {
@@ -88,6 +93,18 @@
         totalHours = convertMinutesToDecimal(endMinutes - startMinutes);
       }
       
+      // Calculate hours after break deduction
+      totalHoursWithoutBreak = Math.max(0, totalHours - BREAK_TIME_HOURS);
+      
+      // Calculate regular and overtime hours
+      if (totalHoursWithoutBreak > 8) {
+        regularHours = 8;
+        overtimeHours = totalHoursWithoutBreak - 8;
+      } else {
+        regularHours = totalHoursWithoutBreak;
+        overtimeHours = 0;
+      }
+      
       return totalHours;
     }
     
@@ -96,12 +113,7 @@
       calculateTotalHours();
     }
     
-    // Handle backdrop click to close modal
-    function handleBackdropClick(event) {
-      if (event.target === event.currentTarget) {
-        closeModal();
-      }
-    }
+
     
     // Handle form submission
     async function handleSubmit() {
@@ -121,15 +133,15 @@
         
         calculateTotalHours();
         
-        // Prepare data for submission
+        // Prepare data for submission - use totalHoursWithoutBreak (after break deduction)
         const data = {
           user: currentUserValue.id,      // Store user ID for relation
           user_name: userNameValue,       // Store user name for display
           dato: new Date(date).toISOString(),
           start: timeToMinutes(startTime),
           slut: timeToMinutes(endTime),
-          totalsum: totalHours,
-          kommentar: comment
+          totalsum: totalHoursWithoutBreak, // Use hours after break deduction
+          overarbejde: overtimeHours // Add calculated overtime hours
         };
         
         console.log('Submitting worker hours:', data);
@@ -168,8 +180,10 @@
       date = new Date().toISOString().split('T')[0];
       startTime = "";
       endTime = "";
-      comment = '';
       totalHours = 0;
+      totalHoursWithoutBreak = 0;
+      regularHours = 0;
+      overtimeHours = 0;
     }
     
     // Handle modal close
@@ -197,7 +211,6 @@
     {#if showModal}
       <div 
         class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
-        on:click={handleBackdropClick}
       >
         <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
           <h2 class="text-xl font-bold mb-4">Log My Working Hours</h2>
@@ -246,22 +259,43 @@
               />
             </div>
             
-            <!-- Comment -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Comment (Optional)</label>
-              <textarea 
-                class="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-                rows="3"
-                bind:value={comment}
-                placeholder="What did you work on today?"
-                disabled={isLoading}
-              ></textarea>
-            </div>
-            
-            <!-- Summary -->
+            <!-- Enhanced Summary with Break Time Display -->
             {#if startTime && endTime}
-              <div class="bg-gray-100 p-3 rounded">
-                <p class="font-medium">Total Hours: {totalHours.toFixed(2)}</p>
+              <div class="bg-gray-100 p-3 rounded space-y-2">
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Total Time Worked:</span>
+                  <span class="font-medium">{totalHours.toFixed(2)} hours</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Break Time:</span>
+                  <span class="font-medium text-orange-600">-{BREAK_TIME_HOURS.toFixed(2)} hours</span>
+                </div>
+                <hr class="border-gray-300">
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600">Regular Hours (up to 8h):</span>
+                  <span class="font-medium text-green-600">{regularHours.toFixed(2)} hours</span>
+                </div>
+                {#if overtimeHours > 0}
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Overtime Hours (over 8h):</span>
+                    <span class="font-medium text-blue-600">{overtimeHours.toFixed(2)} hours</span>
+                  </div>
+                {/if}
+                <hr class="border-gray-300">
+                <div class="flex justify-between items-center">
+                  <span class="font-medium text-gray-700">Total Hours:</span>
+                  <span class="font-bold text-green-600">{totalHoursWithoutBreak.toFixed(2)} hours</span>
+                </div>
+                {#if totalHours < BREAK_TIME_HOURS}
+                  <p class="text-xs text-amber-600 mt-1">
+                    ⚠️ Work period is shorter than break time. No break deducted.
+                  </p>
+                {/if}
+                {#if overtimeHours > 0}
+                  <p class="text-xs text-blue-600 mt-1">
+                    ℹ️ Overtime automatically calculated for hours worked over 8 hours.
+                  </p>
+                {/if}
               </div>
             {/if}
             

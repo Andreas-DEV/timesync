@@ -16,6 +16,57 @@
 	let absenceToDelete = null;
 	let isDeleting = false;
 
+	// Absence report modal state
+	let showReportModal = false;
+	let reportStartDate = '';
+	let reportEndDate = '';
+	let selectedWorker = '';
+	let allWorkers = [];
+	let reportData = null;
+	let isLoadingReport = false;
+
+	// Pagination state
+	let currentPage = 1;
+	let itemsPerPage = 10;
+
+	// Calculate paginated data
+	$: paginatedDailyBreakdown = (() => {
+		if (!reportData?.dailyBreakdown) return [];
+		
+		// Flatten the daily breakdown into individual entries
+		const allEntries = [];
+		Object.entries(reportData.dailyBreakdown).sort().forEach(([date, absences]) => {
+			absences.forEach(absence => {
+				allEntries.push({ date, absence });
+			});
+		});
+		
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		const endIndex = startIndex + itemsPerPage;
+		return allEntries.slice(startIndex, endIndex);
+	})();
+
+	$: totalPages = reportData?.dailyBreakdown 
+		? Math.ceil(Object.entries(reportData.dailyBreakdown).reduce((total, [, absences]) => total + absences.length, 0) / itemsPerPage)
+		: 0;
+
+	// Pagination functions
+	function goToPage(page) {
+		currentPage = Math.max(1, Math.min(page, totalPages));
+	}
+
+	function nextPage() {
+		if (currentPage < totalPages) {
+			currentPage++;
+		}
+	}
+
+	function previousPage() {
+		if (currentPage > 1) {
+			currentPage--;
+		}
+	}
+
 	// Color mapping for absence types
 	const absenceColors = {
 		'Ferie med løn': 'bg-green-100 border-green-300 text-green-800',
@@ -160,6 +211,160 @@
 		showDeleteModal = false;
 		absenceToDelete = null;
 		isDeleting = false;
+	}
+
+	// Open report modal
+	function openReportModal() {
+		showReportModal = true;
+		// Set default dates to current month
+		const today = new Date();
+		const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+		const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+		
+		reportStartDate = firstDay.toISOString().split('T')[0];
+		reportEndDate = lastDay.toISOString().split('T')[0];
+		
+		fetchAllWorkers();
+	}
+
+	// Close report modal
+	function closeReportModal() {
+		showReportModal = false;
+		reportStartDate = '';
+		reportEndDate = '';
+		selectedWorker = '';
+		reportData = null;
+		currentPage = 1; // Reset pagination
+	}
+
+	// Fetch all workers for the dropdown
+	async function fetchAllWorkers() {
+		try {
+			const users = await pb.collection('users').getFullList({
+				sort: 'name'
+			});
+			allWorkers = users;
+		} catch (err) {
+			console.error('Error fetching workers:', err);
+			allWorkers = [];
+		}
+	}
+
+	// Generate absence report
+	async function generateReport() {
+		if (!reportStartDate || !reportEndDate || !selectedWorker) {
+			alert('Please select start date, end date, and worker');
+			return;
+		}
+
+		isLoadingReport = true;
+		currentPage = 1; // Reset pagination for new report
+		try {
+			// Fetch absence records for the selected period and worker
+			const records = await pb.collection('absence_logs').getFullList({
+				filter: `user = "${selectedWorker}"`,
+				expand: 'user',
+				sort: 'created'
+			});
+
+			// Filter records that fall within the date range
+			const startDate = new Date(reportStartDate);
+			const endDate = new Date(reportEndDate);
+			
+			const filteredRecords = records.filter(record => {
+				// Handle "Syg på arbejde" with single date
+				if (record.absence_type === 'Syg på arbejde' && record.date) {
+					const recordDate = new Date(record.date.split(' ')[0]);
+					return recordDate >= startDate && recordDate <= endDate;
+				}
+				
+				// Handle date range absences - check if they overlap with our date range
+				if (record.start_date && record.end_date) {
+					const recordStartDate = new Date(record.start_date);
+					const recordEndDate = new Date(record.end_date);
+					
+					// Check if the ranges overlap
+					return (recordStartDate <= endDate && recordEndDate >= startDate);
+				}
+				
+				// Fallback for old records using date field
+				if (record.date && !record.start_date && !record.end_date) {
+					const recordDate = new Date(record.date.split(' ')[0]);
+					return recordDate >= startDate && recordDate <= endDate;
+				}
+				
+				return false;
+			});
+
+			// Calculate absence statistics
+			let absenceStats = {
+				'Ferie med løn': 0,
+				'Ferie uden løn': 0,
+				'Sygedag': 0,
+				'Fridag': 0,
+				'Syg på arbejde': 0
+			};
+
+			let totalAbsenceDays = 0;
+			let dailyBreakdown = {};
+
+			// Process each record to calculate days and create daily breakdown
+			filteredRecords.forEach(record => {
+				if (record.absence_type === 'Syg på arbejde' && record.date) {
+					// Single day absence
+					const dateStr = record.date.split(' ')[0];
+					if (dateStr >= reportStartDate && dateStr <= reportEndDate) {
+						absenceStats[record.absence_type]++;
+						totalAbsenceDays++;
+						
+						if (!dailyBreakdown[dateStr]) {
+							dailyBreakdown[dateStr] = [];
+						}
+						dailyBreakdown[dateStr].push(record);
+					}
+				} else if (record.start_date && record.end_date) {
+					// Date range absence
+					const recordStartDate = new Date(record.start_date);
+					const recordEndDate = new Date(record.end_date);
+					
+					// Calculate overlapping period with our report range
+					const overlapStart = new Date(Math.max(recordStartDate.getTime(), startDate.getTime()));
+					const overlapEnd = new Date(Math.min(recordEndDate.getTime(), endDate.getTime()));
+					
+					if (overlapStart <= overlapEnd) {
+						// Calculate days in the overlapping period
+						const dayCount = Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 3600 * 24)) + 1;
+						absenceStats[record.absence_type] += dayCount;
+						totalAbsenceDays += dayCount;
+						
+						// Add to daily breakdown for each day in the overlap
+						for (let d = new Date(overlapStart); d <= overlapEnd; d.setDate(d.getDate() + 1)) {
+							const dateStr = d.toISOString().split('T')[0];
+							if (!dailyBreakdown[dateStr]) {
+								dailyBreakdown[dateStr] = [];
+							}
+							dailyBreakdown[dateStr].push(record);
+						}
+					}
+				}
+			});
+
+			reportData = {
+				worker: filteredRecords[0]?.expand?.user,
+				startDate: reportStartDate,
+				endDate: reportEndDate,
+				absenceStats,
+				totalAbsenceDays,
+				dailyBreakdown,
+				records: filteredRecords
+			};
+
+		} catch (err) {
+			console.error('Error generating report:', err);
+			alert('Failed to generate report. Please try again.');
+		} finally {
+			isLoadingReport = false;
+		}
 	}
 
 	// Delete absence
@@ -320,6 +525,16 @@
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+				</svg>
+			</button>
+			
+			<button
+				on:click={openReportModal}
+				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				title="Absence Report"
+			>
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 				</svg>
 			</button>
 			
@@ -527,9 +742,256 @@
 	</div>
 {/if}
 
+<!-- Absence Report Modal -->
+{#if showReportModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+		<div class="bg-white rounded-lg shadow-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+			<div class="flex items-center justify-between mb-6">
+				<div class="flex items-center">
+					<div class="flex-shrink-0">
+						<svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+						</svg>
+					</div>
+					<div class="ml-3">
+						<h3 class="text-lg font-medium text-gray-900">Absence Report</h3>
+					</div>
+				</div>
+				<button
+					type="button"
+					class="text-gray-400 hover:text-gray-600 focus:outline-none focus:text-gray-600 cursor-pointer"
+					on:click={closeReportModal}
+				>
+					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			
+			<!-- Report filters -->
+			<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+				<div>
+					<label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+					<input
+						id="startDate"
+						type="date"
+						bind:value={reportStartDate}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+				</div>
+				
+				<div>
+					<label for="endDate" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+					<input
+						id="endDate"
+						type="date"
+						bind:value={reportEndDate}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+				</div>
+				
+				<div>
+					<label for="worker" class="block text-sm font-medium text-gray-700 mb-1">Worker</label>
+					<select
+						id="worker"
+						bind:value={selectedWorker}
+						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+					>
+						<option value="">Select Worker</option>
+						{#each allWorkers as worker}
+							<option value={worker.id}>
+								{worker.name || worker.email?.split('@')[0] || 'Unknown'}
+								{#if worker.medarbejdernr}(#{worker.medarbejdernr}){/if}
+							</option>
+						{/each}
+					</select>
+				</div>
+				
+				<div class="flex items-end">
+					<button
+						type="button"
+						class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+						on:click={generateReport}
+						disabled={isLoadingReport}
+					>
+						{#if isLoadingReport}
+							<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+							Generating...
+						{:else}
+							Generate Report
+						{/if}
+					</button>
+				</div>
+			</div>
+			
+			<!-- Report results -->
+			{#if reportData}
+				<div class="space-y-6">
+					<!-- Worker info -->
+					<div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+						<h4 class="text-lg font-semibold text-blue-900 mb-2">
+							{reportData.worker?.name || reportData.worker?.email?.split('@')[0] || 'Unknown Worker'}
+						</h4>
+						<div class="text-blue-700 text-sm">
+							{#if reportData.worker?.medarbejdernr}
+								Employee #{reportData.worker.medarbejdernr} •
+							{/if}
+							{new Date(reportData.startDate).toLocaleDateString()} - {new Date(reportData.endDate).toLocaleDateString()}
+						</div>
+					</div>
+					
+					<!-- Summary cards -->
+					<div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="w-4 h-4 rounded border bg-green-100 border-green-300 mx-auto mb-2"></div>
+								<div class="text-lg font-bold text-green-600">{reportData.absenceStats['Ferie med løn']}</div>
+								<div class="text-xs text-gray-600">Ferie med løn</div>
+							</div>
+						</div>
+						
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="w-4 h-4 rounded border bg-yellow-100 border-yellow-300 mx-auto mb-2"></div>
+								<div class="text-lg font-bold text-yellow-600">{reportData.absenceStats['Ferie uden løn']}</div>
+								<div class="text-xs text-gray-600">Ferie uden løn</div>
+							</div>
+						</div>
+						
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="w-4 h-4 rounded border bg-red-100 border-red-300 mx-auto mb-2"></div>
+								<div class="text-lg font-bold text-red-600">{reportData.absenceStats['Sygedag']}</div>
+								<div class="text-xs text-gray-600">Sygedag</div>
+							</div>
+						</div>
+						
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="w-4 h-4 rounded border bg-blue-100 border-blue-300 mx-auto mb-2"></div>
+								<div class="text-lg font-bold text-blue-600">{reportData.absenceStats['Fridag']}</div>
+								<div class="text-xs text-gray-600">Fridag</div>
+							</div>
+						</div>
+						
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="w-4 h-4 rounded border bg-orange-100 border-orange-300 mx-auto mb-2"></div>
+								<div class="text-lg font-bold text-orange-600">{reportData.absenceStats['Syg på arbejde']}</div>
+								<div class="text-xs text-gray-600">Syg på arbejde</div>
+							</div>
+						</div>
+						
+						<div class="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+							<div class="text-center">
+								<div class="text-2xl font-bold text-gray-600">{reportData.totalAbsenceDays}</div>
+								<div class="text-xs text-gray-600">Total Days</div>
+							</div>
+						</div>
+					</div>
+					
+					<!-- Daily breakdown -->
+					{#if Object.keys(reportData.dailyBreakdown).length > 0}
+						<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+							<div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
+								<h5 class="text-sm font-medium text-gray-900">Daily Breakdown</h5>
+							</div>
+							<div class="overflow-x-auto">
+								<table class="min-w-full divide-y divide-gray-200">
+									<thead class="bg-gray-50">
+										<tr>
+											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Absence Type</th>
+											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
+										</tr>
+									</thead>
+									<tbody class="bg-white divide-y divide-gray-200">
+										{#each paginatedDailyBreakdown as { date, absence }}
+											<tr class="hover:bg-gray-50">
+												<td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+													{new Date(date).toLocaleDateString()}
+												</td>
+												<td class="px-4 py-2 whitespace-nowrap text-sm">
+													<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {absenceColors[absence.absence_type] || 'bg-gray-100 text-gray-800'}">
+														{absence.absence_type}
+													</span>
+												</td>
+												<td class="px-4 py-2 text-sm text-gray-600">
+													{absence.comment || '-'}
+												</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+							
+							<!-- Pagination -->
+							{#if totalPages > 1}
+								<div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+									<div class="text-sm text-gray-700">
+										Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, Object.entries(reportData.dailyBreakdown).reduce((total, [, absences]) => total + absences.length, 0))} of {Object.entries(reportData.dailyBreakdown).reduce((total, [, absences]) => total + absences.length, 0)} entries
+									</div>
+									<div class="flex items-center space-x-2">
+										<button
+											type="button"
+											class="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+											on:click={previousPage}
+											disabled={currentPage === 1}
+										>
+											Previous
+										</button>
+										
+										<!-- Page numbers -->
+										{#each Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+											const startPage = Math.max(1, currentPage - 2);
+											const endPage = Math.min(totalPages, startPage + 4);
+											const adjustedStart = Math.max(1, endPage - 4);
+											return adjustedStart + i;
+										}).filter(page => page <= totalPages) as page}
+											<button
+												type="button"
+												class="px-3 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 {currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 hover:bg-gray-50'}"
+												on:click={() => goToPage(page)}
+											>
+												{page}
+											</button>
+										{/each}
+										
+										<button
+											type="button"
+											class="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+											on:click={nextPage}
+											disabled={currentPage === totalPages}
+										>
+											Next
+										</button>
+									</div>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+			
+			<div class="flex justify-end mt-6">
+				<button
+					type="button"
+					class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+					on:click={closeReportModal}
+				>
+					Close
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <!-- Delete Confirmation Modal -->
 {#if showDeleteModal && absenceToDelete}
-	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
 		<div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
 			<div class="flex items-center mb-4">
 				<div class="flex-shrink-0">
