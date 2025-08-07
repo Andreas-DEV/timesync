@@ -1093,7 +1093,7 @@
 				<div class="grid grid-cols-1 gap-4">
 					<div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
 						<div class="text-center">
-							<div class="text-sm font-medium text-blue-700 mb-1">Normal Hours</div>
+							<div class="text-sm font-medium text-blue-700 mb-1">Total Hours</div>
 							<div class="text-3xl font-bold text-blue-800">
 								{selectedHours.totalsum || 0} hours
 							</div>

@@ -24,6 +24,7 @@
       email: '',
       emailVisibility: true,
       verified: false,
+      effektivtid: 0,
       password: '',
       passwordConfirm: '',
       oldPassword: ''
@@ -95,6 +96,7 @@
         email: user.email || '',
         emailVisibility: user.emailVisibility,
         verified: user.verified,
+        effektivtid: user.effektivtid || 0,
         password: '',
         passwordConfirm: '',
         oldPassword: ''
@@ -117,11 +119,19 @@
       editSuccess = false;
       
       try {
+        // Validate effektivtid
+        const effektivtidValue = parseFloat(editFormData.effektivtid);
+        if (isNaN(effektivtidValue) || effektivtidValue < 0 || effektivtidValue > 100) {
+          editError = 'Effektivtid must be a number between 0 and 100';
+          return;
+        }
+        
         const updateData = {
           name: editFormData.name,
           email: editFormData.email,
           emailVisibility: editFormData.emailVisibility,
-          verified: editFormData.verified
+          verified: editFormData.verified,
+          effektivtid: effektivtidValue
         };
         
         // Only include password fields if in password change mode
@@ -224,6 +234,7 @@
             <th class="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Name</th>
             <th class="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Email</th>
             <th class="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Verified</th>
+            <th class="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Effektivtid</th>
             <th class="py-3 px-4 text-left text-sm font-medium text-gray-600 uppercase tracking-wider">Created</th>
             <th class="py-3 px-4 text-center text-sm font-medium text-gray-600 uppercase tracking-wider">Actions</th>
           </tr>
@@ -231,7 +242,7 @@
         <tbody class="divide-y divide-gray-200">
           {#if users.length === 0}
             <tr>
-              <td colspan="5" class="py-4 px-4 text-center text-gray-500">No users found</td>
+              <td colspan="6" class="py-4 px-4 text-center text-gray-500">No users found</td>
             </tr>
           {:else}
             {#each users as user}
@@ -249,6 +260,7 @@
                     </span>
                   {/if}
                 </td>
+                <td class="py-3 px-4">{user.effektivtid || 0}</td>
                 <td class="py-3 px-4">{new Date(user.created).toLocaleDateString()}</td>
                 <td class="py-3 px-4 flex justify-center space-x-2">
                   <button
@@ -362,6 +374,20 @@
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="user@example.com"
             />
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Effektivtid (0-100)</label>
+            <input
+              type="number"
+              bind:value={editFormData.effektivtid}
+              min="0"
+              max="100"
+              step="1"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter value between 0 and 100"
+            />
+            <p class="mt-1 text-xs text-gray-500">Effectiveness time as a percentage (0-100)</p>
           </div>
           
           <div class="flex items-center">

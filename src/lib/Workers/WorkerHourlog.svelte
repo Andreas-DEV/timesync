@@ -93,16 +93,21 @@
         totalHours = convertMinutesToDecimal(endMinutes - startMinutes);
       }
       
-      // Calculate hours after break deduction
-      totalHoursWithoutBreak = Math.max(0, totalHours - BREAK_TIME_HOURS);
-      
-      // Calculate regular and overtime hours
-      if (totalHoursWithoutBreak > 8) {
-        regularHours = 8;
-        overtimeHours = totalHoursWithoutBreak - 8;
+      // CORRECT LOGIC: 
+      // If they worked more than 8 hours, they have overtime
+      if (totalHours > 8) {
+        // Overtime is everything over 8 hours (break doesn't affect overtime)
+        overtimeHours = totalHours - 8;
+        // Regular hours is 8 minus the break time = 7.5
+        regularHours = 8 - BREAK_TIME_HOURS;
+        // Total billable hours = regular hours after break + all overtime
+        totalHoursWithoutBreak = regularHours + overtimeHours;
       } else {
-        regularHours = totalHoursWithoutBreak;
+        // No overtime - just deduct break from total
         overtimeHours = 0;
+        // Calculate hours after break deduction for regular time
+        totalHoursWithoutBreak = Math.max(0, totalHours - BREAK_TIME_HOURS);
+        regularHours = totalHoursWithoutBreak;
       }
       
       return totalHours;
@@ -263,7 +268,7 @@
             {#if startTime && endTime}
               <div class="bg-gray-100 p-3 rounded space-y-2">
                 <div class="flex justify-between items-center">
-                  <span class="text-sm text-gray-600">Total Time Worked:</span>
+                  <span class="text-sm text-gray-600">Total Time at Work:</span>
                   <span class="font-medium">{totalHours.toFixed(2)} hours</span>
                 </div>
                 <div class="flex justify-between items-center">
@@ -277,23 +282,23 @@
                 </div>
                 {#if overtimeHours > 0}
                   <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Overtime Hours (over 8h):</span>
+                    <span class="text-sm text-gray-600">Overtime Hours:</span>
                     <span class="font-medium text-blue-600">{overtimeHours.toFixed(2)} hours</span>
                   </div>
                 {/if}
                 <hr class="border-gray-300">
                 <div class="flex justify-between items-center">
-                  <span class="font-medium text-gray-700">Total Hours:</span>
+                  <span class="font-medium text-gray-700">Total Billable Hours:</span>
                   <span class="font-bold text-green-600">{totalHoursWithoutBreak.toFixed(2)} hours</span>
                 </div>
-                {#if totalHours < BREAK_TIME_HOURS}
+                {#if totalHours <= BREAK_TIME_HOURS}
                   <p class="text-xs text-amber-600 mt-1">
                     ⚠️ Work period is shorter than break time. No break deducted.
                   </p>
                 {/if}
                 {#if overtimeHours > 0}
                   <p class="text-xs text-blue-600 mt-1">
-                    ℹ️ Overtime automatically calculated for hours worked over 8 hours.
+                    ℹ️ Overtime calculated for all time worked beyond 8 hours. Break only deducted from regular hours.
                   </p>
                 {/if}
               </div>

@@ -1,4 +1,4 @@
-<!-- HourLog.svelte - Fixed version -->
+<!-- HourLog.svelte - Updated with effektivtid -->
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { pb, userInfo, initializeUser, requireAuth } from '../stores/userStore';
@@ -24,7 +24,9 @@
   
   // Computed values
   let totalHours = 0;
+  let effectiveHours = 0;
   let totalPrice = 0;
+  let userEffektivtid = 100; // Default to 100% if not set
   
   // User info reactive
   let userInfoValue = { user: null, name: 'Anonymous User', isAuthenticated: false, id: null };
@@ -56,8 +58,27 @@
       // Reload assigned customers when user changes and component is ready
       if (value.isAuthenticated && isComponentReady) {
         loadAssignedCustomers();
+        loadUserEffektivtid();
       }
     });
+  }
+  
+  // Load user's effektivtid value
+  async function loadUserEffektivtid() {
+    try {
+      if (!userInfoValue.id) return;
+      
+      // Get the user's effektivtid from the users collection
+      const user = await pb.collection('users').getOne(userInfoValue.id);
+      
+      // Use the effektivtid value, default to 100 if not set
+      userEffektivtid = user.effektivtid || 100;
+      
+      console.log(`User effektivtid loaded: ${userEffektivtid}%`);
+    } catch (err) {
+      console.error('Error loading user effektivtid:', err);
+      userEffektivtid = 100; // Default to 100% on error
+    }
   }
   
   // Initialize component
@@ -80,6 +101,7 @@
       // Load component data
       await loadAllCustomers();
       await loadAssignedCustomers();
+      await loadUserEffektivtid();
       
       isComponentReady = true;
       console.log('HourLog component initialized successfully');
@@ -170,6 +192,7 @@
   function calculateTotals() {
     if (!formData.startTime || !formData.endTime) {
       totalHours = 0;
+      effectiveHours = 0;
       totalPrice = 0;
       return;
     }
@@ -186,11 +209,16 @@
     }
     
     totalHours = convertMinutesToDecimal(workMinutes);
-    totalPrice = selectedCustomer ? totalHours * selectedCustomer.timepris : 0;
+    
+    // Calculate effective hours based on user's effektivtid percentage
+    effectiveHours = totalHours * (userEffektivtid / 100);
+    
+    // Calculate price based on effective hours
+    totalPrice = selectedCustomer ? effectiveHours * selectedCustomer.timepris : 0;
   }
   
   // Reactive calculations
-  $: if (formData.startTime || formData.endTime || selectedCustomer) {
+  $: if (formData.startTime || formData.endTime || selectedCustomer || userEffektivtid) {
     calculateTotals();
   }
   
@@ -257,7 +285,9 @@
         dato: new Date(formData.date).toISOString(),
         start: timeToMinutes(formData.startTime),
         slut: timeToMinutes(formData.endTime),
-        totalsum: totalHours,
+        totalsum: effectiveHours, // Now using effective hours instead of total hours
+        actual_hours: totalHours, // Store the actual worked hours separately
+        effektivtid: userEffektivtid, // Store the efficiency percentage used
         price: totalPrice,
         kommentar: formData.comment || ''
       };
@@ -305,6 +335,7 @@
       comment: ''
     };
     totalHours = 0;
+    effectiveHours = 0;
     totalPrice = 0;
   }
   
@@ -496,19 +527,25 @@
           </div>
           
           <!-- Summary -->
-          {#if totalHours > 0 && selectedCustomer}
+          <!-- {#if totalHours > 0 && selectedCustomer}
             <div class="bg-gray-50 p-3 rounded border">
               <p class="text-sm font-medium text-gray-700">
-                Total Hours: <span class="font-bold">{totalHours.toFixed(2)}</span>
+                Actual Hours Worked: <span class="font-bold">{totalHours.toFixed(2)}</span>
+              </p>
+              <p class="text-sm font-medium text-gray-700">
+                Your Efficiency: <span class="font-bold">{userEffektivtid}%</span>
+              </p>
+              <p class="text-sm font-medium text-gray-700">
+                Billable Hours: <span class="font-bold text-blue-600">{effectiveHours.toFixed(2)}</span>
               </p>
               <p class="text-sm font-medium text-gray-700">
                 Rate: <span class="font-bold">{selectedCustomer.timepris} kr/hour</span>
               </p>
-              <p class="text-sm font-bold text-gray-900">
-                Total: <span class="text-blue-600">{totalPrice.toFixed(2)} kr</span>
+              <p class="text-sm font-bold text-gray-900 border-t pt-2 mt-2">
+                Total Amount: <span class="text-green-600">{totalPrice.toFixed(2)} kr</span>
               </p>
             </div>
-          {/if}
+          {/if} -->
           
           <!-- Action Buttons -->
           <div class="flex justify-end space-x-3 pt-4">
