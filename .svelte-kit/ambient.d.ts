@@ -34,11 +34,7 @@ declare module '$env/static/private' {
 	export const COMPUTERNAME: string;
 	export const ComSpec: string;
 	export const DriverData: string;
-	export const EFC_7920_1262719628: string;
 	export const EFC_7920_1592913036: string;
-	export const EFC_7920_2283032206: string;
-	export const EFC_7920_2775293581: string;
-	export const EFC_7920_3789132940: string;
 	export const ELECTRON_NO_ASAR: string;
 	export const ELECTRON_RUN_AS_NODE: string;
 	export const HOMEDRIVE: string;
@@ -51,7 +47,7 @@ declare module '$env/static/private' {
 	export const OneDrive: string;
 	export const ORIGINAL_XDG_CURRENT_DESKTOP: string;
 	export const OS: string;
-	export const Path: string;
+	export const path: string;
 	export const PATHEXT: string;
 	export const PROCESSOR_ARCHITECTURE: string;
 	export const PROCESSOR_IDENTIFIER: string;
@@ -80,6 +76,7 @@ declare module '$env/static/private' {
 	export const VSCODE_NLS_CONFIG: string;
 	export const VSCODE_PID: string;
 	export const windir: string;
+	export const __COMPAT_LAYER: string;
 }
 
 /**
@@ -119,11 +116,7 @@ declare module '$env/dynamic/private' {
 		COMPUTERNAME: string;
 		ComSpec: string;
 		DriverData: string;
-		EFC_7920_1262719628: string;
 		EFC_7920_1592913036: string;
-		EFC_7920_2283032206: string;
-		EFC_7920_2775293581: string;
-		EFC_7920_3789132940: string;
 		ELECTRON_NO_ASAR: string;
 		ELECTRON_RUN_AS_NODE: string;
 		HOMEDRIVE: string;
@@ -136,7 +129,7 @@ declare module '$env/dynamic/private' {
 		OneDrive: string;
 		ORIGINAL_XDG_CURRENT_DESKTOP: string;
 		OS: string;
-		Path: string;
+		path: string;
 		PATHEXT: string;
 		PROCESSOR_ARCHITECTURE: string;
 		PROCESSOR_IDENTIFIER: string;
@@ -165,6 +158,7 @@ declare module '$env/dynamic/private' {
 		VSCODE_NLS_CONFIG: string;
 		VSCODE_PID: string;
 		windir: string;
+		__COMPAT_LAYER: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;
 	}

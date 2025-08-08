@@ -3652,7 +3652,7 @@ let customerReportData = {
       class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all"
     >
       <div class="border-b border-gray-200 px-6 py-4 sticky top-0 bg-white">
-        <h3 class="text-lg font-medium text-gray-900">Customer Report Generator</h3>
+        <h3 class="text-lg font-medium text-gray-900">Generate Customer Report</h3>
       </div>
 
       <div class="px-6 py-4">
