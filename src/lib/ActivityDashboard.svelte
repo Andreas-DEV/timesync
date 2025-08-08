@@ -29,6 +29,26 @@
 
   let selectedCustomer = null;
 
+  let showCustomerReportModal = false;
+let customerReportData = {
+  customer: null,
+  startDate: "",
+  endDate: "",
+  hourLogs: [],
+  productLogs: [],
+  stats: {
+    totalHours: 0,
+    totalHourAmount: 0,
+    totalProducts: 0,
+    totalProductAmount: 0,
+    totalAmount: 0,
+    hourLogCount: 0,
+    productLogCount: 0,
+    invoicedAmount: 0,
+    notInvoicedAmount: 0
+  }
+};
+
   let showEditModal = false;
   let editingLog = null;
   let editType = ""; // 'hour' or 'product'
@@ -1886,6 +1906,100 @@
     }
   }
 
+  function generateCustomerReport() {
+    if (!customerReportData.customer || !customerReportData.startDate || !customerReportData.endDate) {
+      showErrorToast("Please select a customer and date range");
+      return;
+    }
+
+    const startDate = new Date(customerReportData.startDate);
+    const endDate = new Date(customerReportData.endDate + 'T23:59:59');
+
+    // Filter hour logs for this customer and date range
+    const filteredHours = hourLogs.filter(log => {
+      const logDate = new Date(log.dato);
+      return log.kunde_navn === customerReportData.customer &&
+             logDate >= startDate &&
+             logDate <= endDate;
+    });
+
+    // Filter product logs for this customer and date range
+    const filteredProducts = productLogs.filter(log => {
+      const logDate = new Date(log.created);
+      const customerName = log.expand?.kunder?.navn || log.kunder;
+      return customerName === customerReportData.customer &&
+             logDate >= startDate &&
+             logDate <= endDate;
+    });
+
+    // Calculate statistics
+    const totalHours = filteredHours.reduce((sum, log) => sum + log.totalsum, 0);
+    const totalHourAmount = filteredHours.reduce((sum, log) => sum + log.price, 0);
+    const totalProducts = filteredProducts.reduce((sum, log) => sum + log.quantity, 0);
+    const totalProductAmount = filteredProducts.reduce((sum, log) => sum + log.total_price, 0);
+    
+    // Calculate invoiced amounts
+    const invoicedHourAmount = filteredHours
+      .filter(log => log.invoiced === true)
+      .reduce((sum, log) => sum + log.price, 0);
+    
+    const invoicedProductAmount = filteredProducts
+      .filter(log => log.invoiced === true)
+      .reduce((sum, log) => sum + log.total_price, 0);
+
+    // Update report data
+    customerReportData.hourLogs = filteredHours;
+    customerReportData.productLogs = filteredProducts;
+    customerReportData.stats = {
+      totalHours: totalHours.toFixed(2),
+      totalHourAmount: totalHourAmount.toFixed(2),
+      totalProducts: totalProducts,
+      totalProductAmount: totalProductAmount.toFixed(2),
+      totalAmount: (totalHourAmount + totalProductAmount).toFixed(2),
+      hourLogCount: filteredHours.length,
+      productLogCount: filteredProducts.length,
+      invoicedAmount: (invoicedHourAmount + invoicedProductAmount).toFixed(2),
+      notInvoicedAmount: ((totalHourAmount + totalProductAmount) - (invoicedHourAmount + invoicedProductAmount)).toFixed(2)
+    };
+
+    // Force reactivity
+    customerReportData = {...customerReportData};
+  }
+
+  // Function to export customer report
+  function exportCustomerReport() {
+    if (!customerReportData.customer) return;
+    
+    const dateRange = `${new Date(customerReportData.startDate).toLocaleDateString()}_${new Date(customerReportData.endDate).toLocaleDateString()}`;
+    const filename = `${customerReportData.customer}_report_${dateRange}`.replace(/\s+/g, '_').replace(/\//g, '-');
+    
+    if (useExcelFormat) {
+      exportCombinedLogsToExcel(
+        customerReportData.hourLogs,
+        customerReportData.productLogs,
+        filename,
+        null
+      );
+    } else {
+      // Export as CSV - create summary data
+      const summaryData = [
+        { label: "Customer", value: customerReportData.customer },
+        { label: "Date Range", value: `${new Date(customerReportData.startDate).toLocaleDateString()} - ${new Date(customerReportData.endDate).toLocaleDateString()}` },
+        { label: "Total Hours", value: customerReportData.stats.totalHours },
+        { label: "Hours Amount", value: `${customerReportData.stats.totalHourAmount} kr` },
+        { label: "Total Products", value: customerReportData.stats.totalProducts },
+        { label: "Products Amount", value: `${customerReportData.stats.totalProductAmount} kr` },
+        { label: "Total Amount", value: `${customerReportData.stats.totalAmount} kr` },
+        { label: "Invoiced", value: `${customerReportData.stats.invoicedAmount} kr` },
+        { label: "Not Invoiced", value: `${customerReportData.stats.notInvoicedAmount} kr` }
+      ];
+      
+      exportToCsv(summaryData, ["Label", "Value"], ["label", "value"], filename + "_summary");
+    }
+    
+    showSuccessToast("Report exported successfully!");
+  }
+
   // Switch tabs
   function switchTab(tab) {
     activeTab = tab;
@@ -2002,6 +2116,36 @@
           />
         </svg>
       </button>
+
+      <button
+        class="p-2 bg-gray-200 rounded-full hover:bg-gray-300"
+        on:click={() => changeYear(1)}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-5 w-5"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </button>
+
+      <!-- ADD THIS CUSTOMER REPORT BUTTON HERE -->
+      <button
+        class="ml-2 p-2 bg-[#6e6c6c] text-white rounded-lg hover:bg-[#6e6c6cde] flex items-center cursor-pointer"
+        on:click={() => showCustomerReportModal = true}
+      >
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+        
+      </button>
+
 
       <!-- Toggle Export Format -->
       <div class="flex items-center mr-2">
@@ -3492,6 +3636,250 @@
             Save Changes
           {/if}
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+
+<!-- Add this before the style tag -->
+<!-- Customer Report Modal -->
+{#if showCustomerReportModal}
+  <div
+    class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4"
+  >
+    <div
+      class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all"
+    >
+      <div class="border-b border-gray-200 px-6 py-4 sticky top-0 bg-white">
+        <h3 class="text-lg font-medium text-gray-900">Customer Report Generator</h3>
+      </div>
+
+      <div class="px-6 py-4">
+        <!-- Input Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <!-- Customer Selection -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Select Customer
+            </label>
+            <select
+              class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              bind:value={customerReportData.customer}
+              on:change={generateCustomerReport}
+            >
+              <option value={null}>Select a customer...</option>
+              {#each allCustomers as customer}
+                <option value={customer.name}>{customer.name}</option>
+              {/each}
+            </select>
+          </div>
+
+          <!-- Start Date -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Start Date
+            </label>
+            <input
+              type="date"
+              class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              bind:value={customerReportData.startDate}
+              on:change={generateCustomerReport}
+            />
+          </div>
+
+          <!-- End Date -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              End Date
+            </label>
+            <input
+              type="date"
+              class="block w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              bind:value={customerReportData.endDate}
+              on:change={generateCustomerReport}
+            />
+          </div>
+        </div>
+
+        <!-- Report Statistics -->
+        {#if customerReportData.customer && customerReportData.startDate && customerReportData.endDate}
+          <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-6 mb-6">
+            <h4 class="text-lg font-semibold text-gray-800 mb-4">
+              Report for {customerReportData.customer}
+            </h4>
+            <p class="text-sm text-gray-600 mb-4">
+              Period: {new Date(customerReportData.startDate).toLocaleDateString()} - {new Date(customerReportData.endDate).toLocaleDateString()}
+            </p>
+
+            <!-- Statistics Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <!-- Hours Stats -->
+              <div class="bg-white p-4 rounded-lg">
+                <div class="text-sm text-gray-500">Hour Logs</div>
+                <div class="text-2xl font-bold text-blue-600">{customerReportData.stats.hourLogCount}</div>
+                <div class="text-sm text-gray-600">{customerReportData.stats.totalHours} hours</div>
+                <div class="text-sm font-semibold">{customerReportData.stats.totalHourAmount} kr</div>
+              </div>
+
+              <!-- Products Stats -->
+              <div class="bg-white p-4 rounded-lg">
+                <div class="text-sm text-gray-500">Product Logs</div>
+                <div class="text-2xl font-bold text-indigo-600">{customerReportData.stats.productLogCount}</div>
+                <div class="text-sm text-gray-600">{customerReportData.stats.totalProducts} units</div>
+                <div class="text-sm font-semibold">{customerReportData.stats.totalProductAmount} kr</div>
+              </div>
+
+              <!-- Total Amount -->
+              <div class="bg-white p-4 rounded-lg">
+                <div class="text-sm text-gray-500">Total Amount</div>
+                <div class="text-2xl font-bold text-green-600">{customerReportData.stats.totalAmount} kr</div>
+                <div class="text-sm text-green-600">Invoiced: {customerReportData.stats.invoicedAmount} kr</div>
+                <div class="text-sm text-red-600">Not Invoiced: {customerReportData.stats.notInvoicedAmount} kr</div>
+              </div>
+
+              <!-- Summary -->
+              <div class="bg-white p-4 rounded-lg">
+                <div class="text-sm text-gray-500">Total Entries</div>
+                <div class="text-2xl font-bold text-purple-600">
+                  {customerReportData.stats.hourLogCount + customerReportData.stats.productLogCount}
+                </div>
+                <div class="text-sm text-gray-600">
+                  {Math.round((parseFloat(customerReportData.stats.invoicedAmount) / parseFloat(customerReportData.stats.totalAmount || 1)) * 100)}% invoiced
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Detailed Logs Section -->
+          <div class="space-y-6">
+            <!-- Hour Logs -->
+            {#if customerReportData.hourLogs.length > 0}
+              <div>
+                <h5 class="font-semibold text-gray-800 mb-3 flex items-center">
+                  <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
+                  Hour Logs ({customerReportData.hourLogs.length})
+                </h5>
+                <div class="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoiced</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                      {#each customerReportData.hourLogs as log}
+                        <tr>
+                          <td class="px-4 py-2 text-sm">{formatDate(log.dato)}</td>
+                          <td class="px-4 py-2 text-sm">{log.totalsum.toFixed(2)}</td>
+                          <td class="px-4 py-2 text-sm">{log.price.toFixed(2)} kr</td>
+                          <td class="px-4 py-2 text-sm text-gray-500">{log.user_name || "—"}</td>
+                          <td class="px-4 py-2 text-sm">
+                            <span class={`inline-flex px-2 text-xs font-semibold rounded-full ${log.invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {log.invoiced ? "Yes" : "No"}
+                            </span>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Product Logs -->
+            {#if customerReportData.productLogs.length > 0}
+              <div>
+                <h5 class="font-semibold text-gray-800 mb-3 flex items-center">
+                  <span class="w-3 h-3 bg-indigo-500 rounded-full mr-2"></span>
+                  Product Logs ({customerReportData.productLogs.length})
+                </h5>
+                <div class="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoiced</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                      {#each customerReportData.productLogs as log}
+                        <tr>
+                          <td class="px-4 py-2 text-sm">{formatDate(log.created)}</td>
+                          <td class="px-4 py-2 text-sm">{log.expand?.product?.productName || log.product || "—"}</td>
+                          <td class="px-4 py-2 text-sm">{log.quantity}</td>
+                          <td class="px-4 py-2 text-sm">{log.total_price.toFixed(2)} kr</td>
+                          <td class="px-4 py-2 text-sm text-gray-500">{log.expand?.user?.name || log.user || "—"}</td>
+                          <td class="px-4 py-2 text-sm">
+                            <span class={`inline-flex px-2 text-xs font-semibold rounded-full ${log.invoiced ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {log.invoiced ? "Yes" : "No"}
+                            </span>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <div class="text-center py-12 text-gray-500">
+            <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v1a3 3 0 003 3h0a3 3 0 003-3v-1m-6 0h6m-6 0H6a2 2 0 01-2-2V5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 01-2 2h-3m-6 0a2 2 0 01-2-2v-1a2 2 0 012-2h6a2 2 0 012 2v1a2 2 0 01-2 2"></path>
+            </svg>
+            <p>Select a customer and date range to generate a report</p>
+          </div>
+        {/if}
+      </div>
+
+      <div class="bg-gray-50 px-6 py-3 flex justify-between rounded-b-lg sticky bottom-0">
+        <button
+          class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          on:click={() => {
+            showCustomerReportModal = false;
+            customerReportData = {
+              customer: null,
+              startDate: "",
+              endDate: "",
+              hourLogs: [],
+              productLogs: [],
+              stats: {
+                totalHours: 0,
+                totalHourAmount: 0,
+                totalProducts: 0,
+                totalProductAmount: 0,
+                totalAmount: 0,
+                hourLogCount: 0,
+                productLogCount: 0,
+                invoicedAmount: 0,
+                notInvoicedAmount: 0
+              }
+            };
+          }}
+        >
+          Close
+        </button>
+        
+        {#if customerReportData.customer && customerReportData.stats.totalAmount > 0}
+          <button
+            class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            on:click={exportCustomerReport}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+            Export Report
+          </button>
+        {/if}
       </div>
     </div>
   </div>
