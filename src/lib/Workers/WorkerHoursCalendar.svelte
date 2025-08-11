@@ -85,7 +85,11 @@
 
 	// Get days in current month
 	$: daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-	$: firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+	$: firstDayOfMonth = (() => {
+		const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+		// Convert Sunday (0) to 7, so Monday becomes 0
+		return firstDay === 0 ? 6 : firstDay - 1;
+	})();
 	$: monthName = new Date(currentYear, currentMonth).toLocaleDateString('en-US', { 
 		month: 'long', 
 		year: 'numeric' 
@@ -600,7 +604,7 @@
 		<!-- Calendar Grid -->
 		<div class="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden">
 			<!-- Day Headers -->
-			{#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as dayName}
+			{#each ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as dayName}
 				<div class="bg-gray-50 p-3 text-center text-sm font-medium text-gray-700">
 					{dayName}
 				</div>
