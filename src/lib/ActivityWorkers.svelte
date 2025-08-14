@@ -7,9 +7,10 @@
     let currentYear = new Date().getFullYear();
     let selectedMonth = null;
     let showModal = false;
-    let modalType = null; // 'hour' or 'product'
+    let modalType = null; // 'hour', 'product', or 'worker'
     let hourLogs = [];
     let productLogs = [];
+    let workerHours = []; // Add new array for worker hours
     let customers = [];
     let products = [];
     let monthlyStats = {};
@@ -17,9 +18,9 @@
     let user = null;
     let editingLog = null;
     let editingType = null;
-    let calculatedTotalPrice = 0; // Add this reactive variable for display
-    let showYearlyStats = false; // Add this to control stats visibility
-    let expandedMonths = new Set(); // Add this to track which months are expanded
+    let calculatedTotalPrice = 0;
+    let showYearlyStats = false;
+    let expandedMonths = new Set();
   
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -99,6 +100,12 @@
           filter: `user = "${user.id}" && created >= "${startDateStr}" && created <= "${endDateStr}"`,
           sort: '-created'
         });
+
+        // Load all worker hours for the year
+        const workerHoursResult = await pb.collection('worker_hours').getList(1, 500, {
+          filter: `user = "${user.id}" && dato >= "${startDateStr}" && dato <= "${endDateStr}"`,
+          sort: '-dato'
+        });
   
         // Calculate stats for each month
         for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
@@ -114,16 +121,24 @@
             const logDate = new Date(log.created);
             return logDate >= monthStart && logDate <= monthEnd;
           });
+
+          const monthWorkerHours = workerHoursResult.items.filter(log => {
+            const logDate = new Date(log.dato);
+            return logDate >= monthStart && logDate <= monthEnd;
+          });
   
           const totalHours = monthHourLogs.reduce((sum, log) => sum + (log.totalsum || 0), 0);
           const totalProducts = monthProductLogs.reduce((sum, log) => sum + (log.quantity || 0), 0);
+          const totalWorkerHours = monthWorkerHours.reduce((sum, log) => sum + (log.totalsum || 0), 0);
           const workingDays = new Set(monthHourLogs.map(log => new Date(log.dato).toDateString())).size;
   
           monthlyStats[monthIndex] = {
             hourLogs: monthHourLogs.length,
             productLogs: monthProductLogs.length,
+            workerHoursLogs: monthWorkerHours.length,
             totalHours: totalHours,
             totalProducts: totalProducts,
+            totalWorkerHours: totalWorkerHours,
             workingDays: workingDays,
             avgHoursPerDay: workingDays > 0 ? (totalHours / workingDays) : 0
           };
@@ -173,6 +188,16 @@
           });
           productLogs = productLogsResult.items;
         }
+
+        // Load worker hours for the selected month
+        if (type === 'worker') {
+          const workerHoursResult = await pb.collection('worker_hours').getList(1, 100, {
+            filter: `user = "${user.id}" && dato >= "${startDateStr}" && dato <= "${endDateStr}"`,
+            sort: '-dato',
+            expand: 'user'
+          });
+          workerHours = workerHoursResult.items;
+        }
   
         // Load customers for dropdown
         const kundersResult = await pb.collection('kunder').getList(1, 100, {
@@ -205,6 +230,7 @@
       selectedMonth = null;
       hourLogs = [];
       productLogs = [];
+      workerHours = [];
       customers = [];
       products = [];
     }
@@ -401,12 +427,14 @@
           {@const yearStats = Object.values(monthlyStats).reduce((acc, month) => ({
             totalHours: acc.totalHours + month.totalHours,
             totalProducts: acc.totalProducts + month.totalProducts,
+            totalWorkerHours: acc.totalWorkerHours + month.totalWorkerHours,
             totalHourEntries: acc.totalHourEntries + month.hourLogs,
             totalProductEntries: acc.totalProductEntries + month.productLogs,
+            totalWorkerEntries: acc.totalWorkerEntries + month.workerHoursLogs,
             totalWorkingDays: acc.totalWorkingDays + month.workingDays
-          }), { totalHours: 0, totalProducts: 0, totalHourEntries: 0, totalProductEntries: 0, totalWorkingDays: 0 })}
+          }), { totalHours: 0, totalProducts: 0, totalWorkerHours: 0, totalHourEntries: 0, totalProductEntries: 0, totalWorkerEntries: 0, totalWorkingDays: 0 })}
           
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
             <div class="text-center">
               <div class="text-2xl font-bold text-blue-600">{yearStats.totalHours.toFixed(1)}</div>
               <div class="text-sm text-gray-600">Total Hours</div>
@@ -414,6 +442,10 @@
             <div class="text-center">
               <div class="text-2xl font-bold text-green-600">{yearStats.totalProducts}</div>
               <div class="text-sm text-gray-600">Products Logged</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-indigo-600">{yearStats.totalWorkerHours.toFixed(1)}</div>
+              <div class="text-sm text-gray-600">Worker Hours</div>
             </div>
             <div class="text-center">
               <div class="text-2xl font-bold text-purple-600">{yearStats.totalWorkingDays}</div>
@@ -428,8 +460,8 @@
         
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {#each months as month, index}
-            {@const stats = monthlyStats[index] || { hourLogs: 0, productLogs: 0, totalHours: 0, totalProducts: 0, workingDays: 0, avgHoursPerDay: 0 }}
-            {@const hasActivity = stats.hourLogs > 0 || stats.productLogs > 0}
+            {@const stats = monthlyStats[index] || { hourLogs: 0, productLogs: 0, workerHoursLogs: 0, totalHours: 0, totalProducts: 0, totalWorkerHours: 0, workingDays: 0, avgHoursPerDay: 0 }}
+            {@const hasActivity = stats.hourLogs > 0 || stats.productLogs > 0 || stats.workerHoursLogs > 0}
             {@const isExpanded = expandedMonths.has(index)}
             
             <div
@@ -485,6 +517,12 @@
                         <div class="flex justify-between items-center">
                           <span class="text-green-600">📦 Products:</span>
                           <span class="font-medium">{stats.totalProducts}</span>
+                        </div>
+                      {/if}
+                      {#if stats.totalWorkerHours > 0}
+                        <div class="flex justify-between items-center">
+                          <span class="text-indigo-600">👷 Worker Hours:</span>
+                          <span class="font-medium">{stats.totalWorkerHours.toFixed(1)}</span>
                         </div>
                       {/if}
                       {#if stats.workingDays > 0}
@@ -559,6 +597,17 @@
                 <span class="text-lg font-medium text-gray-900">Product Logs</span>
                 <span class="text-sm text-gray-500">View and edit product entries</span>
               </button>
+
+              <button 
+                on:click={() => loadDataForModal('worker')}
+                class="flex flex-col items-center p-6 border-2 border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all cursor-pointer"
+              >
+                <svg class="w-12 h-12 text-indigo-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span class="text-lg font-medium text-gray-900">Worker Hours</span>
+                <span class="text-sm text-gray-500">View your worked time logs</span>
+              </button>
             </div>
           {:else}
             <!-- Data Display -->
@@ -571,15 +620,15 @@
               {:else if modalType === 'hour'}
                 <!-- Hour Logs Table -->
                 <div class="mb-4 flex justify-between items-center">
-                  <h4 class="text-lg font-medium text-gray-900">
-                    Hour Logs ({hourLogs.length} entries)
-                  </h4>
                   <button 
                     on:click={() => modalType = null}
                     class="text-blue-600 hover:text-blue-800 cursor-pointer"
                   >
                     ← Back to selection
                   </button>
+                  <h4 class="text-lg font-medium text-gray-900">
+                    Hour Logs ({hourLogs.length} entries)
+                  </h4>
                 </div>
                 
                 {#if hourLogs.length === 0}
@@ -634,15 +683,15 @@
               {:else if modalType === 'product'}
                 <!-- Product Logs Table -->
                 <div class="mb-4 flex justify-between items-center">
-                  <h4 class="text-lg font-medium text-gray-900">
-                    Product Logs ({productLogs.length} entries)
-                  </h4>
                   <button 
                     on:click={() => modalType = null}
                     class="text-blue-600 hover:text-blue-800 cursor-pointer"
                   >
                     ← Back to selection
                   </button>
+                  <h4 class="text-lg font-medium text-gray-900">
+                    Product Logs ({productLogs.length} entries)
+                  </h4>
                 </div>
                 
                 {#if productLogs.length === 0}
@@ -693,6 +742,68 @@
                               >
                                 Edit
                               </button>
+                            </td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
+                {/if}
+              {:else if modalType === 'worker'}
+                <!-- Worker Hours Table -->
+                <div class="mb-4 flex justify-between items-center">
+                  <button 
+                    on:click={() => modalType = null}
+                    class="text-blue-600 hover:text-blue-800 cursor-pointer"
+                  >
+                    ← Back to selection
+                  </button>
+                  <h4 class="text-lg font-medium text-gray-900">
+                    Worker Hours ({workerHours.length} entries)
+                  </h4>
+                </div>
+                
+                {#if workerHours.length === 0}
+                  <div class="p-6 text-center text-gray-500">
+                    No worker hours found for this month.
+                  </div>
+                {:else}
+                  <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                      <thead class="bg-gray-50">
+                        <tr>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Worker Name</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
+                        </tr>
+                      </thead>
+                      <tbody class="bg-white divide-y divide-gray-200">
+                        {#each workerHours as log}
+                          <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatDate(log.dato)}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">
+                              {log.user_name || 'Unknown'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {minutesToTimeString(log.start)} - {minutesToTimeString(log.slut)} ({log.totalsum}h)
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <div class="flex items-center">
+                                {#if log.overarbejde && log.overarbejde > 0}
+                                  <span class="text-orange-600 font-medium">{log.overarbejde}h</span>
+                                {:else}
+                                  <span class="text-gray-400">-</span>
+                                {/if}
+                              </div>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900 max-w-xs" title={log.kommentar || 'No comment'}>
+                              <div class="truncate">
+                                {truncateText(log.kommentar || 'No comment', 30)}
+                              </div>
                             </td>
                           </tr>
                         {/each}
