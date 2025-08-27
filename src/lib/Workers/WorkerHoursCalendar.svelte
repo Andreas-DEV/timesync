@@ -1,4 +1,3 @@
-<!-- src/lib/components/WorkerHoursCalendar.svelte -->
 <script>
 	import { onMount } from 'svelte';
 	import PocketBase from 'pocketbase';
@@ -78,6 +77,15 @@
 		'6-8': 'bg-yellow-100 border-yellow-300 text-yellow-800',
 		'8-10': 'bg-green-100 border-green-300 text-green-800',
 		'10+': 'bg-blue-100 border-blue-300 text-blue-800'
+	};
+
+	// Overtime color mapping - darker variants to distinguish from regular hours
+	const overtimeColors = {
+		'0-4': 'bg-red-200 border-red-400 text-red-900',
+		'4-6': 'bg-orange-200 border-orange-400 text-orange-900',
+		'6-8': 'bg-yellow-200 border-yellow-400 text-yellow-900',
+		'8-10': 'bg-green-200 border-green-400 text-green-900',
+		'10+': 'bg-blue-200 border-blue-400 text-blue-900'
 	};
 
 	$: currentYear = currentDate.getFullYear();
@@ -197,13 +205,15 @@
 		return dayHours;
 	}
 
-	// Get color class based on total hours
-	function getHoursColor(totalHours) {
-		if (totalHours < 4) return hoursColors['0-4'];
-		if (totalHours < 6) return hoursColors['4-6'];
-		if (totalHours < 8) return hoursColors['6-8'];
-		if (totalHours < 10) return hoursColors['8-10'];
-		return hoursColors['10+'];
+	// Get color class based on total hours and overtime status
+	function getHoursColor(totalHours, isOvertime = false) {
+		const colors = isOvertime ? overtimeColors : hoursColors;
+		
+		if (totalHours < 4) return colors['0-4'];
+		if (totalHours < 6) return colors['4-6'];
+		if (totalHours < 8) return colors['6-8'];
+		if (totalHours < 10) return colors['8-10'];
+		return colors['10+'];
 	}
 
 	// Navigate months
@@ -623,7 +633,7 @@
 						<div class="space-y-1">
 							{#each getHoursForDate(day) as hours (hours.id)}
 								<div
-									class="text-xs px-1 py-0.5 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm select-none {getHoursColor(hours.totalsum || 0)}"
+									class="text-xs px-1 py-0.5 rounded border cursor-pointer transition-all duration-150 hover:shadow-sm select-none relative {getHoursColor(hours.totalsum || 0, hours.overtid)}"
 									on:mouseenter={(e) => handleMouseEnter(e, hours)}
 									on:mouseleave={handleMouseLeave}
 									on:click={(e) => handleHoursSingleClick(hours, e)}
@@ -632,6 +642,13 @@
 									<div class="text-xs font-medium truncate">
 										{hours.expand?.user?.name || hours.expand?.user?.email?.split('@')[0] || hours.user_name || 'Unknown'}
 									</div>
+									
+									<!-- Overtime indicator -->
+									{#if hours.overtid}
+										<div class="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border border-white flex items-center justify-center">
+											<span class="text-white text-[8px] font-bold">OT</span>
+										</div>
+									{/if}
 								</div>
 							{/each}
 						</div>
@@ -641,26 +658,47 @@
 		</div>
 
 		<!-- Legend -->
-		<div class="mt-6 grid grid-cols-5 gap-3">
-			<div class="flex items-center space-x-2">
-				<div class="w-4 h-4 rounded border bg-red-100 border-red-300"></div>
-				<span class="text-xs text-gray-600">0-4 hours</span>
+		<div class="mt-6">
+			<!-- Hour ranges legend -->
+			<div class="grid grid-cols-5 gap-3 mb-4">
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-red-100 border-red-300"></div>
+					<span class="text-xs text-gray-600">0-4 hours</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-orange-100 border-orange-300"></div>
+					<span class="text-xs text-gray-600">4-6 hours</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-yellow-100 border-yellow-300"></div>
+					<span class="text-xs text-gray-600">6-8 hours</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-green-100 border-green-300"></div>
+					<span class="text-xs text-gray-600">8-10 hours</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-blue-100 border-blue-300"></div>
+					<span class="text-xs text-gray-600">10+ hours</span>
+				</div>
 			</div>
-			<div class="flex items-center space-x-2">
-				<div class="w-4 h-4 rounded border bg-orange-100 border-orange-300"></div>
-				<span class="text-xs text-gray-600">4-6 hours</span>
-			</div>
-			<div class="flex items-center space-x-2">
-				<div class="w-4 h-4 rounded border bg-yellow-100 border-yellow-300"></div>
-				<span class="text-xs text-gray-600">6-8 hours</span>
-			</div>
-			<div class="flex items-center space-x-2">
-				<div class="w-4 h-4 rounded border bg-green-100 border-green-300"></div>
-				<span class="text-xs text-gray-600">8-10 hours</span>
-			</div>
-			<div class="flex items-center space-x-2">
-				<div class="w-4 h-4 rounded border bg-blue-100 border-blue-300"></div>
-				<span class="text-xs text-gray-600">10+ hours</span>
+			
+			<!-- Overtime legend -->
+			<div class="flex items-center justify-center space-x-6 p-3 bg-gray-50 rounded-lg">
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-green-100 border-green-300"></div>
+					<span class="text-xs text-gray-600">Regular Hours</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-4 h-4 rounded border bg-green-200 border-green-400"></div>
+					<span class="text-xs text-gray-600">Overtime Hours (Darker)</span>
+				</div>
+				<div class="flex items-center space-x-2">
+					<div class="w-3 h-3 bg-orange-500 rounded-full border border-white flex items-center justify-center">
+						<span class="text-white text-[6px] font-bold">OT</span>
+					</div>
+					<span class="text-xs text-gray-600">Overtime Badge</span>
+				</div>
 			</div>
 		</div>
 
@@ -770,6 +808,11 @@
 		{#if hoveredHours.overarbejde}
 			<div class="text-orange-300 text-xs">
 				Overtime: {hoveredHours.overarbejde} hours
+			</div>
+		{/if}
+		{#if hoveredHours.overtid}
+			<div class="text-yellow-300 text-xs font-medium">
+				⚡ Overtime Work Session
 			</div>
 		{/if}
 		{#if hoveredHours.kommentar}
@@ -933,6 +976,7 @@
 											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Normal Hours</th>
 											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime Hours</th>
 											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Hours</th>
+											<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OT Status</th>
 										</tr>
 									</thead>
 									<tbody class="bg-white divide-y divide-gray-200">
@@ -949,6 +993,19 @@
 												</td>
 												<td class="px-4 py-2 whitespace-nowrap text-sm font-semibold text-gray-900">
 													{((record.totalsum || 0) + (record.overarbejde || 0)).toFixed(1)}h
+												</td>
+												<td class="px-4 py-2 whitespace-nowrap text-sm">
+													{#if record.overtid}
+														<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+															<div class="w-2 h-2 bg-orange-500 rounded-full mr-1"></div>
+															Overtime
+														</span>
+													{:else}
+														<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+															<div class="w-2 h-2 bg-gray-500 rounded-full mr-1"></div>
+															Regular
+														</span>
+													{/if}
 												</td>
 											</tr>
 										{/each}
@@ -1071,6 +1128,23 @@
 						})}
 					</div>
 				</div>
+
+				<!-- Overtime Status -->
+				{#if selectedHours.overtid}
+					<div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
+						<div class="flex items-center">
+							<div class="w-3 h-3 bg-orange-500 rounded-full mr-2"></div>
+							<span class="text-orange-800 font-medium">This is an overtime work session</span>
+						</div>
+					</div>
+				{:else}
+					<div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+						<div class="flex items-center">
+							<div class="w-3 h-3 bg-gray-500 rounded-full mr-2"></div>
+							<span class="text-gray-800 font-medium">This is a regular work session</span>
+						</div>
+					</div>
+				{/if}
 
 				<!-- Time Details -->
 				<div class="grid grid-cols-2 gap-4">

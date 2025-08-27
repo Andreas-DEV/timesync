@@ -130,6 +130,8 @@
           const totalHours = monthHourLogs.reduce((sum, log) => sum + (log.totalsum || 0), 0);
           const totalProducts = monthProductLogs.reduce((sum, log) => sum + (log.quantity || 0), 0);
           const totalWorkerHours = monthWorkerHours.reduce((sum, log) => sum + (log.totalsum || 0), 0);
+          const totalWorkerOvertimeHours = monthWorkerHours.reduce((sum, log) => sum + (log.overarbejde || 0), 0);
+          const overtimeWorkSessions = monthWorkerHours.filter(log => log.overtid).length;
           const workingDays = new Set(monthHourLogs.map(log => new Date(log.dato).toDateString())).size;
   
           monthlyStats[monthIndex] = {
@@ -139,6 +141,8 @@
             totalHours: totalHours,
             totalProducts: totalProducts,
             totalWorkerHours: totalWorkerHours,
+            totalWorkerOvertimeHours: totalWorkerOvertimeHours,
+            overtimeWorkSessions: overtimeWorkSessions,
             workingDays: workingDays,
             avgHoursPerDay: workingDays > 0 ? (totalHours / workingDays) : 0
           };
@@ -403,22 +407,27 @@
       </div>
   
       <!-- Calendar Grid -->
-      <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="text-xl font-semibold text-gray-900">{currentYear} Calendar</h2>
+      <div class="bg-white rounded-xl shadow-lg p-8 mb-6 border border-gray-100">
+        <div class="flex justify-between items-center mb-8">
+          <h2 class="text-2xl font-bold text-gray-800 flex items-center space-x-3">
+            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>{currentYear} Calendar</span>
+          </h2>
           <button 
             on:click={() => showYearlyStats = !showYearlyStats}
-            class="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors cursor-pointer"
+            class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-all duration-200 shadow-sm cursor-pointer"
           >
             <svg 
-              class="w-5 h-5 transition-transform duration-200 {showYearlyStats ? 'rotate-180' : ''}" 
+              class="w-5 h-5 transition-transform duration-200 text-blue-600 {showYearlyStats ? 'rotate-180' : ''}" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
             >
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
-            <span class="text-sm font-medium">Year Overview</span>
+            <span class="text-sm font-semibold text-blue-700">Year Overview</span>
           </button>
         </div>
         
@@ -428,119 +437,78 @@
             totalHours: acc.totalHours + month.totalHours,
             totalProducts: acc.totalProducts + month.totalProducts,
             totalWorkerHours: acc.totalWorkerHours + month.totalWorkerHours,
+            totalWorkerOvertimeHours: acc.totalWorkerOvertimeHours + month.totalWorkerOvertimeHours,
             totalHourEntries: acc.totalHourEntries + month.hourLogs,
             totalProductEntries: acc.totalProductEntries + month.productLogs,
             totalWorkerEntries: acc.totalWorkerEntries + month.workerHoursLogs,
-            totalWorkingDays: acc.totalWorkingDays + month.workingDays
-          }), { totalHours: 0, totalProducts: 0, totalWorkerHours: 0, totalHourEntries: 0, totalProductEntries: 0, totalWorkerEntries: 0, totalWorkingDays: 0 })}
+            totalWorkingDays: acc.totalWorkingDays + month.workingDays,
+            overtimeWorkSessions: acc.overtimeWorkSessions + month.overtimeWorkSessions
+          }), { totalHours: 0, totalProducts: 0, totalWorkerHours: 0, totalWorkerOvertimeHours: 0, totalHourEntries: 0, totalProductEntries: 0, totalWorkerEntries: 0, totalWorkingDays: 0, overtimeWorkSessions: 0 })}
           
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-            <div class="text-center">
-              <div class="text-2xl font-bold text-blue-600">{yearStats.totalHours.toFixed(1)}</div>
-              <div class="text-sm text-gray-600">Total Hours</div>
+          <div class="grid grid-cols-2 md:grid-cols-6 gap-6 mb-8 p-6 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-2xl border border-blue-100 shadow-inner">
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-blue-100">
+              <div class="text-3xl font-bold text-blue-600 mb-1">{yearStats.totalHours.toFixed(1)}</div>
+              <div class="text-sm font-medium text-gray-600">Total Hours</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-green-600">{yearStats.totalProducts}</div>
-              <div class="text-sm text-gray-600">Products Logged</div>
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-green-100">
+              <div class="text-3xl font-bold text-green-600 mb-1">{yearStats.totalProducts}</div>
+              <div class="text-sm font-medium text-gray-600">Products Logged</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-indigo-600">{yearStats.totalWorkerHours.toFixed(1)}</div>
-              <div class="text-sm text-gray-600">Worker Hours</div>
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-indigo-100">
+              <div class="text-3xl font-bold text-indigo-600 mb-1">{yearStats.totalWorkerHours.toFixed(1)}</div>
+              <div class="text-sm font-medium text-gray-600">Worker Hours</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-purple-600">{yearStats.totalWorkingDays}</div>
-              <div class="text-sm text-gray-600">Working Days</div>
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-orange-100">
+              <div class="text-3xl font-bold text-orange-600 mb-1">{yearStats.totalWorkerOvertimeHours.toFixed(1)}</div>
+              <div class="text-sm font-medium text-gray-600">Overtime Hours</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-orange-600">{yearStats.totalWorkingDays > 0 ? (yearStats.totalHours / yearStats.totalWorkingDays).toFixed(1) : '0'}</div>
-              <div class="text-sm text-gray-600">Avg Hours/Day</div>
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-purple-100">
+              <div class="text-3xl font-bold text-purple-600 mb-1">{yearStats.totalWorkingDays}</div>
+              <div class="text-sm font-medium text-gray-600">Working Days</div>
+            </div>
+            <div class="text-center p-4 bg-white rounded-xl shadow-sm border border-red-100">
+              <div class="text-3xl font-bold text-red-600 mb-1">{yearStats.overtimeWorkSessions}</div>
+              <div class="text-sm font-medium text-gray-600">OT Sessions</div>
             </div>
           </div>
         {/if}
         
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {#each months as month, index}
-            {@const stats = monthlyStats[index] || { hourLogs: 0, productLogs: 0, workerHoursLogs: 0, totalHours: 0, totalProducts: 0, totalWorkerHours: 0, workingDays: 0, avgHoursPerDay: 0 }}
+            {@const stats = monthlyStats[index] || { hourLogs: 0, productLogs: 0, workerHoursLogs: 0, totalHours: 0, totalProducts: 0, totalWorkerHours: 0, totalWorkerOvertimeHours: 0, overtimeWorkSessions: 0, workingDays: 0, avgHoursPerDay: 0 }}
             {@const hasActivity = stats.hourLogs > 0 || stats.productLogs > 0 || stats.workerHoursLogs > 0}
             {@const isExpanded = expandedMonths.has(index)}
             
             <div
-              class="p-4 border-2 rounded-lg transition-all duration-200 relative overflow-hidden {selectedMonth === index && showModal
-                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' 
+              class="group relative p-6 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 shadow-md hover:shadow-xl overflow-hidden {selectedMonth === index && showModal
+                ? 'border-2 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg' 
                 : hasActivity 
-                  ? 'border-green-200 bg-green-50 hover:border-green-300 hover:bg-green-100' 
-                  : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'}"
+                  ? 'border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 hover:border-green-300 hover:from-green-100 hover:to-emerald-100' 
+                  : 'border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 hover:border-blue-300 hover:from-blue-50 hover:to-indigo-50'}"
             >
-              <!-- Activity Indicator -->
-              {#if hasActivity}
-                <div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              {/if}
-              
+              <!-- Decorative background pattern -->
+              <!-- <div class="absolute inset-0 opacity-5">
+                <svg class="w-full h-full" viewBox="0 0 60 60" fill="currentColor">
+                  <circle cx="30" cy="30" r="1.5" />
+                  <circle cx="10" cy="10" r="1" />
+                  <circle cx="50" cy="10" r="1" />
+                  <circle cx="10" cy="50" r="1" />
+                  <circle cx="50" cy="50" r="1" />
+                </svg>
+              </div>
+ -->
               <!-- Main month button -->
               <button
                 on:click={() => loadMonthData(index)}
-                class="w-full text-left cursor-pointer"
+                class="w-full text-left cursor-pointer relative z-10"
               >
-                <div class="text-lg font-medium mb-2">{month}</div>
-                <div class="text-sm text-gray-500 mb-3">{currentYear}</div>
+                <div class="text-xl font-bold mb-2 text-gray-800 group-hover:text-gray-900 transition-colors">{month}</div>
+                <div class="text-sm font-medium text-gray-500 mb-4">{currentYear}</div>
               </button>
               
-              {#if !hasActivity}
-                <div class="text-xs text-gray-400 italic">No activity</div>
-              {:else}
-                <!-- Expandable stats section -->
-                <div class="border-t pt-3 mt-3">
-                  <button
-                    on:click={() => toggleMonthStats(index)}
-                    class="flex items-center justify-between w-full text-xs text-gray-600 hover:text-gray-800 cursor-pointer"
-                  >
-                    <span class="font-medium">Details</span>
-                    <svg 
-                      class="w-4 h-4 transition-transform duration-200 {isExpanded ? 'rotate-180' : ''}" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  
-                  {#if isExpanded}
-                    <div class="space-y-1 text-xs mt-2">
-                      {#if stats.totalHours > 0}
-                        <div class="flex justify-between items-center">
-                          <span class="text-blue-600">⏱️ Hours:</span>
-                          <span class="font-medium">{stats.totalHours.toFixed(1)}</span>
-                        </div>
-                      {/if}
-                      {#if stats.totalProducts > 0}
-                        <div class="flex justify-between items-center">
-                          <span class="text-green-600">📦 Products:</span>
-                          <span class="font-medium">{stats.totalProducts}</span>
-                        </div>
-                      {/if}
-                      {#if stats.totalWorkerHours > 0}
-                        <div class="flex justify-between items-center">
-                          <span class="text-indigo-600">👷 Worker Hours:</span>
-                          <span class="font-medium">{stats.totalWorkerHours.toFixed(1)}</span>
-                        </div>
-                      {/if}
-                      {#if stats.workingDays > 0}
-                        <div class="flex justify-between items-center">
-                          <span class="text-purple-600">📅 Days:</span>
-                          <span class="font-medium">{stats.workingDays}</span>
-                        </div>
-                      {/if}
-                      {#if stats.avgHoursPerDay > 0}
-                        <div class="flex justify-between items-center">
-                          <span class="text-orange-600">📊 Avg/Day:</span>
-                          <span class="font-medium">{stats.avgHoursPerDay.toFixed(1)}h</span>
-                        </div>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
+              <!-- {#if !hasActivity}
+                <div class="text-xs text-gray-400 italic font-medium py-2">No activity this month</div>
+              {/if} -->
             </div>
           {/each}
         </div>
@@ -572,6 +540,58 @@
               </svg>
             </button>
           </div>
+
+          <!-- Month Stats Overview -->
+          {#if monthlyStats[selectedMonth]}
+            {@const stats = monthlyStats[selectedMonth]}
+            <div class="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <h4 class="text-lg font-semibold text-gray-800 mb-3">Month Overview</h4>
+              <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                {#if stats.totalHours > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-blue-600">{stats.totalHours.toFixed(1)}</div>
+                    <div class="text-xs text-gray-600">Hours</div>
+                  </div>
+                {/if}
+                {#if stats.totalProducts > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-green-600">{stats.totalProducts}</div>
+                    <div class="text-xs text-gray-600">Products</div>
+                  </div>
+                {/if}
+                {#if stats.totalWorkerHours > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-indigo-600">{stats.totalWorkerHours.toFixed(1)}</div>
+                    <div class="text-xs text-gray-600">Worker Hours</div>
+                  </div>
+                {/if}
+                {#if stats.totalWorkerOvertimeHours > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-orange-600">{stats.totalWorkerOvertimeHours.toFixed(1)}</div>
+                    <div class="text-xs text-gray-600">Overtime</div>
+                  </div>
+                {/if}
+                {#if stats.overtimeWorkSessions > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-red-600">{stats.overtimeWorkSessions}</div>
+                    <div class="text-xs text-gray-600">OT Sessions</div>
+                  </div>
+                {/if}
+                {#if stats.workingDays > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-purple-600">{stats.workingDays}</div>
+                    <div class="text-xs text-gray-600">Working Days</div>
+                  </div>
+                {/if}
+                {#if stats.avgHoursPerDay > 0}
+                  <div class="text-center">
+                    <div class="text-xl font-bold text-gray-600">{stats.avgHoursPerDay.toFixed(1)}</div>
+                    <div class="text-xs text-gray-600">Avg/Day</div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
           
           {#if !modalType}
             <!-- Data Type Selection -->
@@ -775,7 +795,8 @@
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Worker Name</th>
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime Hours</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OT Status</th>
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
                         </tr>
                       </thead>
@@ -799,6 +820,19 @@
                                   <span class="text-gray-400">-</span>
                                 {/if}
                               </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                              {#if log.overtid}
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                  <div class="w-2 h-2 bg-orange-500 rounded-full mr-1"></div>
+                                  Overtime
+                                </span>
+                              {:else}
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  <div class="w-2 h-2 bg-gray-500 rounded-full mr-1"></div>
+                                  Regular
+                                </span>
+                              {/if}
                             </td>
                             <td class="px-6 py-4 text-sm text-gray-900 max-w-xs" title={log.kommentar || 'No comment'}>
                               <div class="truncate">

@@ -10,6 +10,7 @@
     let date = new Date().toISOString().split('T')[0];
     let startTime = ""; // Use string format for the inputs
     let endTime = "";
+    let isOvertimeWork = false; // New variable for the overtime toggle
 
     let totalHours = 0;
     let totalHoursWithoutBreak = 0; // New variable to show hours after break deduction
@@ -146,7 +147,8 @@
           start: timeToMinutes(startTime),
           slut: timeToMinutes(endTime),
           totalsum: totalHoursWithoutBreak, // Use hours after break deduction
-          overarbejde: overtimeHours // Add calculated overtime hours
+          overarbejde: overtimeHours, // Add calculated overtime hours
+          overtid: isOvertimeWork // Add the overtime toggle boolean
         };
         
         console.log('Submitting worker hours:', data);
@@ -189,6 +191,7 @@
       totalHoursWithoutBreak = 0;
       regularHours = 0;
       overtimeHours = 0;
+      isOvertimeWork = false; // Reset overtime toggle
     }
     
     // Handle modal close
@@ -264,6 +267,26 @@
               />
             </div>
             
+            <!-- Overtime Toggle -->
+            <div class="flex items-center justify-between p-3 bg-yellow-50 rounded-md">
+              <div>
+                <label class="text-sm font-medium text-gray-700">Is this overtime work?</label>
+                <p class="text-xs text-gray-500">Toggle if this work session counts as overtime</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  class="sr-only peer" 
+                  bind:checked={isOvertimeWork}
+                  disabled={isLoading}
+                />
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <span class="ml-3 text-sm font-medium text-gray-900">
+                  {isOvertimeWork ? 'Yes' : 'No'}
+                </span>
+              </label>
+            </div>
+            
             <!-- Enhanced Summary with Break Time Display -->
             {#if startTime && endTime}
               <div class="bg-gray-100 p-3 rounded space-y-2">
@@ -291,6 +314,12 @@
                   <span class="font-medium text-gray-700">Total Billable Hours:</span>
                   <span class="font-bold text-green-600">{totalHoursWithoutBreak.toFixed(2)} hours</span>
                 </div>
+                {#if isOvertimeWork}
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-yellow-600">Overtime Work:</span>
+                    <span class="font-medium text-yellow-600">✓ Yes</span>
+                  </div>
+                {/if}
                 {#if totalHours <= BREAK_TIME_HOURS}
                   <p class="text-xs text-amber-600 mt-1">
                     ⚠️ Work period is shorter than break time. No break deducted.
