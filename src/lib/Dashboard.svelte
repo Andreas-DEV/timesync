@@ -1,4 +1,4 @@
-<!-- Dashboard.svelte - Complete version with data caching -->
+<!-- Dashboard.svelte - Complete version with reduced loading animations -->
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { pb, userInfo, initializeUser } from './stores/userStore';
@@ -27,10 +27,31 @@
     import ProductLogButton from "./Logging/ProductLogButton.svelte";
     import SelfAbsenceButton from "./AbsenceLogging/SelfAbsenceButton.svelte";
     import WorkerHourlog from "./Workers/WorkerHourlog.svelte";
-    import CvrTjek from "./CvrTjek.svelte";
+
+    // Helper function to check if dashboard has been loaded today
+    function hasLoadedToday(): boolean {
+        try {
+            const lastLoadDate = localStorage.getItem('dashboard-last-load-date');
+            const today = new Date().toDateString();
+            return lastLoadDate === today;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    // Helper function to mark dashboard as loaded today
+    function markLoadedToday(): void {
+        try {
+            const today = new Date().toDateString();
+            localStorage.setItem('dashboard-last-load-date', today);
+        } catch (error) {
+            // Silent fail if localStorage is not available
+        }
+    }
 
     // Component state
     let isComponentReady = false;
+    let showInitialLoading = !hasLoadedToday(); // Only show on first load of the day
     let showMessageModal = false;
     let showNotificationTray = false;
     let showMessageDetail = false;
@@ -43,7 +64,7 @@
     let isSendingMessage = false;
     let isSendingReply = false;
     
-    // Loading states for different message views
+    // Loading states for different message views - simplified
     let isLoadingMessages = false;
     let isLoadingReadMessages = false;
     let isLoadingOldMessages = false;
@@ -128,6 +149,10 @@
             await setupRealtimeSubscriptions();
             
             isComponentReady = true;
+            
+            // Mark as loaded today after successful initialization
+            markLoadedToday();
+            
             console.log('Dashboard: Initialization complete');
             
         } catch (error) {
@@ -136,9 +161,13 @@
     }
 
     async function loadMessagesView(view, forceRefresh = false) {
+        // Only show loading for individual message views if it's a forced refresh
+        // or if we don't have any data cached
+        const shouldShowLoading = forceRefresh || !currentMessages.length;
+        
         switch (view) {
             case 'new':
-                isLoadingMessages = true;
+                if (shouldShowLoading) isLoadingMessages = true;
                 try {
                     await fetchMessages(forceRefresh);
                 } finally {
@@ -146,7 +175,7 @@
                 }
                 break;
             case 'read':
-                isLoadingReadMessages = true;
+                if (shouldShowLoading) isLoadingReadMessages = true;
                 try {
                     await fetchReadMessages(forceRefresh);
                 } finally {
@@ -154,7 +183,7 @@
                 }
                 break;
             case 'old':
-                isLoadingOldMessages = true;
+                if (shouldShowLoading) isLoadingOldMessages = true;
                 try {
                     await fetchOldMessages(forceRefresh);
                 } finally {
@@ -415,7 +444,7 @@
     }
 </style>
 
-{#if !isComponentReady}
+{#if showInitialLoading && !isComponentReady}
     <div class="min-h-screen bg-gray-50 flex items-center justify-center" transition:fade>
         <div class="text-center">
             <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -425,7 +454,7 @@
             <p class="text-gray-600">Loading dashboard...</p>
         </div>
     </div>
-{:else if !$userInfo.isAuthenticated}
+{:else if !$userInfo.isAuthenticated && isComponentReady}
     <div class="min-h-screen bg-gray-50 flex items-center justify-center" transition:fade>
         <div class="text-center">
             <h1 class="text-2xl font-semibold text-gray-900 mb-4">Please Log In</h1>
@@ -476,14 +505,6 @@
                                             <h3 class="text-lg font-semibold text-gray-900">
                                                 {currentView === 'new' ? 'New Messages' : currentView === 'read' ? 'Read Messages' : 'Old Messages'}
                                             </h3>
-                                            {#if (currentView === 'new' || currentView === 'read') && currentMessages.length > 0 && !currentLoadingState}
-                                                <button
-                                                    on:click={clearAllMessages}
-                                                    class="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                                                >
-                                                    Clear All
-                                                </button>
-                                            {/if}
                                         </div>
                                         <div class="flex mt-2">
                                             <button
@@ -507,15 +528,7 @@
                                         </div>
                                     </div>
                                     <div class="max-h-96 overflow-y-auto">
-                                        {#if currentLoadingState}
-                                            <div class="p-8 flex flex-col items-center justify-center text-gray-500">
-                                                <svg class="w-8 h-8 spinner mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" class="opacity-25"></circle>
-                                                    <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                                <p class="text-sm">Loading messages...</p>
-                                            </div>
-                                        {:else if currentMessages.length === 0}
+                                        {#if currentMessages.length === 0}
                                             <div class="p-4 text-gray-500 text-center">
                                                 {currentView === 'new' ? 'No new messages' : currentView === 'read' ? 'No read messages' : 'No old messages'}
                                             </div>

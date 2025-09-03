@@ -15,6 +15,7 @@
     let products = [];
     let monthlyStats = {};
     let loading = false;
+    let dataLoaded = false; // Add this flag to track if data has been loaded
     let user = null;
     let editingLog = null;
     let editingType = null;
@@ -80,6 +81,8 @@
     async function loadMonthlyStats() {
       if (!user) return;
       
+      loading = true;
+      dataLoaded = false;
       monthlyStats = {};
       
       try {
@@ -147,13 +150,17 @@
             avgHoursPerDay: workingDays > 0 ? (totalHours / workingDays) : 0
           };
         }
+        
+        dataLoaded = true;
       } catch (error) {
         console.error('Error loading monthly stats:', error);
+      } finally {
+        loading = false;
       }
     }
   
     async function loadMonthData(monthIndex) {
-      if (!user) return;
+      if (!user || !dataLoaded) return; // Prevent clicking if data not loaded
       
       selectedMonth = monthIndex;
       showModal = true;
@@ -385,7 +392,8 @@
             <select 
               bind:value={currentYear} 
               on:change={loadMonthlyStats}
-              class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              disabled={loading}
+              class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {#each Array.from({length: 10}, (_, i) => new Date().getFullYear() - 5 + i) as year}
                 <option value={year}>{year}</option>
@@ -414,10 +422,14 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span>{currentYear} Calendar</span>
+            {#if loading && !dataLoaded}
+              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            {/if}
           </h2>
           <button 
             on:click={() => showYearlyStats = !showYearlyStats}
-            class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-all duration-200 shadow-sm cursor-pointer"
+            disabled={!dataLoaded}
+            class="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-all duration-200 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg 
               class="w-5 h-5 transition-transform duration-200 text-blue-600 {showYearlyStats ? 'rotate-180' : ''}" 
@@ -432,7 +444,7 @@
         </div>
         
         <!-- Year Overview Stats -->
-        {#if showYearlyStats && Object.keys(monthlyStats).length > 0}
+        {#if showYearlyStats && Object.keys(monthlyStats).length > 0 && dataLoaded}
           {@const yearStats = Object.values(monthlyStats).reduce((acc, month) => ({
             totalHours: acc.totalHours + month.totalHours,
             totalProducts: acc.totalProducts + month.totalProducts,
@@ -480,47 +492,33 @@
             {@const isExpanded = expandedMonths.has(index)}
             
             <div
-              class="group relative p-6 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-1 shadow-md hover:shadow-xl overflow-hidden {selectedMonth === index && showModal
-                ? 'border-2 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg' 
-                : hasActivity 
-                  ? 'border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 hover:border-green-300 hover:from-green-100 hover:to-emerald-100' 
-                  : 'border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 hover:border-blue-300 hover:from-blue-50 hover:to-indigo-50'}"
+              class="group relative p-6 rounded-2xl transition-all duration-300 overflow-hidden {
+                !dataLoaded 
+                  ? 'border-2 border-gray-200 bg-gradient-to-br from-gray-100 to-gray-200 opacity-60 cursor-not-allowed' 
+                  : selectedMonth === index && showModal
+                    ? 'border-2 border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg transform scale-105 -translate-y-1' 
+                    : hasActivity 
+                      ? 'border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 hover:border-green-300 hover:from-green-100 hover:to-emerald-100 shadow-md hover:shadow-xl transform hover:scale-105 hover:-translate-y-1 cursor-pointer' 
+                      : 'border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 hover:border-blue-300 hover:from-blue-50 hover:to-indigo-50 shadow-md hover:shadow-xl transform hover:scale-105 hover:-translate-y-1 cursor-pointer'
+              }"
             >
-              <!-- Decorative background pattern -->
-              <!-- <div class="absolute inset-0 opacity-5">
-                <svg class="w-full h-full" viewBox="0 0 60 60" fill="currentColor">
-                  <circle cx="30" cy="30" r="1.5" />
-                  <circle cx="10" cy="10" r="1" />
-                  <circle cx="50" cy="10" r="1" />
-                  <circle cx="10" cy="50" r="1" />
-                  <circle cx="50" cy="50" r="1" />
-                </svg>
-              </div>
- -->
               <!-- Main month button -->
               <button
                 on:click={() => loadMonthData(index)}
-                class="w-full text-left cursor-pointer relative z-10"
+                disabled={!dataLoaded}
+                class="w-full text-left cursor-pointer relative z-10 disabled:cursor-not-allowed"
               >
-                <div class="text-xl font-bold mb-2 text-gray-800 group-hover:text-gray-900 transition-colors">{month}</div>
+                <div class="text-xl font-bold mb-2 text-gray-800 group-hover:text-gray-900 transition-colors {!dataLoaded ? 'text-gray-500' : ''}">{month}</div>
                 <div class="text-sm font-medium text-gray-500 mb-4">{currentYear}</div>
+                
+                
               </button>
-              
-              <!-- {#if !hasActivity}
-                <div class="text-xs text-gray-400 italic font-medium py-2">No activity this month</div>
-              {/if} -->
             </div>
           {/each}
         </div>
       </div>
   
-      <!-- Loading State -->
-      {#if loading && !showModal}
-        <div class="flex justify-center items-center py-12">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span class="ml-3 text-gray-600">Loading...</span>
-        </div>
-      {/if}
+
     </div>
   
     <!-- Month Data Modal -->
@@ -542,56 +540,108 @@
           </div>
 
           <!-- Month Stats Overview -->
-          {#if monthlyStats[selectedMonth]}
+          <!-- {#if monthlyStats[selectedMonth]}
             {@const stats = monthlyStats[selectedMonth]}
-            <div class="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-              <h4 class="text-lg font-semibold text-gray-800 mb-3">Month Overview</h4>
-              <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div class="mb-8 p-8 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 rounded-2xl border border-slate-200 shadow-lg">
+              <div class="flex items-center mb-6">
+                <div class="w-2 h-8 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full mr-4"></div>
+                <h4 class="text-2xl font-bold text-slate-800 tracking-tight">Month Overview</h4>
+              </div>
+              <div class="flex flex-wrap justify-center gap-6">
                 {#if stats.totalHours > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-blue-600">{stats.totalHours.toFixed(1)}</div>
-                    <div class="text-xs text-gray-600">Hours</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-blue-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-blue-700 mb-1">{stats.totalHours.toFixed(1)}</div>
+                      <div class="text-sm font-medium text-slate-600">Hours</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.totalProducts > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-green-600">{stats.totalProducts}</div>
-                    <div class="text-xs text-gray-600">Products</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-emerald-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-emerald-700 mb-1">{stats.totalProducts}</div>
+                      <div class="text-sm font-medium text-slate-600">Products</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.totalWorkerHours > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-indigo-600">{stats.totalWorkerHours.toFixed(1)}</div>
-                    <div class="text-xs text-gray-600">Worker Hours</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-indigo-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-indigo-700 mb-1">{stats.totalWorkerHours.toFixed(1)}</div>
+                      <div class="text-sm font-medium text-slate-600">Worker Hours</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.totalWorkerOvertimeHours > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-orange-600">{stats.totalWorkerOvertimeHours.toFixed(1)}</div>
-                    <div class="text-xs text-gray-600">Overtime</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-orange-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-orange-700 mb-1">{stats.totalWorkerOvertimeHours.toFixed(1)}</div>
+                      <div class="text-sm font-medium text-slate-600">Overtime</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.overtimeWorkSessions > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-red-600">{stats.overtimeWorkSessions}</div>
-                    <div class="text-xs text-gray-600">OT Sessions</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-red-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-red-400 to-red-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-red-700 mb-1">{stats.overtimeWorkSessions}</div>
+                      <div class="text-sm font-medium text-slate-600">OT Sessions</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.workingDays > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-purple-600">{stats.workingDays}</div>
-                    <div class="text-xs text-gray-600">Working Days</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-purple-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-purple-700 mb-1">{stats.workingDays}</div>
+                      <div class="text-sm font-medium text-slate-600">Working Days</div>
+                    </div>
                   </div>
                 {/if}
                 {#if stats.avgHoursPerDay > 0}
-                  <div class="text-center">
-                    <div class="text-xl font-bold text-gray-600">{stats.avgHoursPerDay.toFixed(1)}</div>
-                    <div class="text-xs text-gray-600">Avg/Day</div>
+                  <div class="bg-white/80 backdrop-blur-sm rounded-xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105">
+                    <div class="text-center">
+                      <div class="w-12 h-12 bg-gradient-to-br from-slate-400 to-slate-600 rounded-full mx-auto mb-3 flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <div class="text-3xl font-bold text-slate-700 mb-1">{stats.avgHoursPerDay.toFixed(1)}</div>
+                      <div class="text-sm font-medium text-slate-600">Avg/Day</div>
+                    </div>
                   </div>
                 {/if}
               </div>
             </div>
-          {/if}
+          {/if} -->
           
           {#if !modalType}
             <!-- Data Type Selection -->
@@ -635,7 +685,6 @@
               {#if loading}
                 <div class="flex justify-center items-center py-12">
                   <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span class="ml-3 text-gray-600">Loading...</span>
                 </div>
               {:else if modalType === 'hour'}
                 <!-- Hour Logs Table -->
@@ -797,7 +846,6 @@
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours</th>
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overtime Hours</th>
                           <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OT Status</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comment</th>
                         </tr>
                       </thead>
                       <tbody class="bg-white divide-y divide-gray-200">
@@ -834,11 +882,7 @@
                                 </span>
                               {/if}
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-900 max-w-xs" title={log.kommentar || 'No comment'}>
-                              <div class="truncate">
-                                {truncateText(log.kommentar || 'No comment', 30)}
-                              </div>
-                            </td>
+                            
                           </tr>
                         {/each}
                       </tbody>

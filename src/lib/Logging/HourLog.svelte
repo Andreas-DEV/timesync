@@ -1,18 +1,17 @@
-<!-- HourLog.svelte - Updated with effektivtid -->
+<!-- HourLog.svelte - Minimal version, always clickable -->
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { pb, userInfo, initializeUser, requireAuth } from '../stores/userStore';
   import { fade } from 'svelte/transition';
   
   // Component state
-  let isComponentReady = false;
   let showModal = false;
   let allCustomers = [];
   let assignedCustomers = [];
   let selectedCustomer = null;
   let isLoading = false;
-  let isInitializing = true;
   let error = null;
+  let isLoadingData = false;
   
   // Form data
   let formData = {
@@ -49,68 +48,26 @@
     55: 0.92, 56: 0.93, 57: 0.95, 58: 0.97, 59: 0.98, 60: 1.00
   };
   
-  // Subscribe to user info store
-  function subscribeToStores() {
+  // Subscribe to user info store (minimal subscription)
+  onMount(() => {
     unsubscribeUserInfo = userInfo.subscribe(value => {
       userInfoValue = value;
       isAdmin = value?.user?.admin === true || value?.user?.role === 'admin';
-      
-      // Reload assigned customers when user changes and component is ready
-      if (value.isAuthenticated && isComponentReady) {
-        loadAssignedCustomers();
-        loadUserEffektivtid();
-      }
     });
-  }
+  });
   
   // Load user's effektivtid value
   async function loadUserEffektivtid() {
     try {
       if (!userInfoValue.id) return;
       
-      // Get the user's effektivtid from the users collection
       const user = await pb.collection('users').getOne(userInfoValue.id);
-      
-      // Use the effektivtid value, default to 100 if not set
       userEffektivtid = user.effektivtid || 100;
       
       console.log(`User effektivtid loaded: ${userEffektivtid}%`);
     } catch (err) {
       console.error('Error loading user effektivtid:', err);
-      userEffektivtid = 100; // Default to 100% on error
-    }
-  }
-  
-  // Initialize component
-  async function initializeComponent() {
-    try {
-      isInitializing = true;
-      error = null;
-      
-      // Subscribe to stores
-      subscribeToStores();
-      
-      // Initialize user authentication
-      await initializeUser();
-      
-      // Check authentication
-      if (!userInfoValue.isAuthenticated) {
-        throw new Error('User authentication required');
-      }
-      
-      // Load component data
-      await loadAllCustomers();
-      await loadAssignedCustomers();
-      await loadUserEffektivtid();
-      
-      isComponentReady = true;
-      console.log('HourLog component initialized successfully');
-      
-    } catch (err) {
-      console.error('Error initializing HourLog component:', err);
-      error = err.message;
-    } finally {
-      isInitializing = false;
+      userEffektivtid = 100;
     }
   }
   
@@ -165,6 +122,36 @@
     }
   }
   
+  // Load data when needed
+  async function loadDataIfNeeded() {
+    if (allCustomers.length > 0) return; // Already loaded
+    
+    isLoadingData = true;
+    error = null;
+    
+    try {
+      await initializeUser();
+      
+      if (!userInfoValue.isAuthenticated) {
+        throw new Error('You must be logged in to log hours.');
+      }
+      
+      await loadAllCustomers();
+      await loadAssignedCustomers();
+      await loadUserEffektivtid();
+      
+      if (assignedCustomers.length === 0 && !isAdmin) {
+        throw new Error('No customers are assigned to you. Please contact your administrator.');
+      }
+      
+    } catch (err) {
+      console.error('Error loading data:', err);
+      error = err.message;
+    } finally {
+      isLoadingData = false;
+    }
+  }
+  
   // Time conversion functions
   function timeToMinutes(timeStr) {
     if (!timeStr || typeof timeStr !== 'string') return 0;
@@ -202,18 +189,13 @@
     
     let workMinutes;
     if (startMinutes > endMinutes) {
-      // Work spans midnight
       workMinutes = (24 * 60) - startMinutes + endMinutes;
     } else {
       workMinutes = endMinutes - startMinutes;
     }
     
     totalHours = convertMinutesToDecimal(workMinutes);
-    
-    // Calculate effective hours based on user's effektivtid percentage
     effectiveHours = totalHours * (userEffektivtid / 100);
-    
-    // Calculate price based on effective hours
     totalPrice = selectedCustomer ? effectiveHours * selectedCustomer.timepris : 0;
   }
   
@@ -274,7 +256,6 @@
     isLoading = true;
     
     try {
-      // Ensure user is authenticated
       const user = requireAuth();
       
       const logData = {
@@ -285,20 +266,18 @@
         dato: new Date(formData.date).toISOString(),
         start: timeToMinutes(formData.startTime),
         slut: timeToMinutes(formData.endTime),
-        totalsum: effectiveHours, // Now using effective hours instead of total hours
-        actual_hours: totalHours, // Store the actual worked hours separately
-        effektivtid: userEffektivtid, // Store the efficiency percentage used
+        totalsum: effectiveHours,
+        actual_hours: totalHours,
+        effektivtid: userEffektivtid,
         price: totalPrice,
         kommentar: formData.comment || ''
       };
       
       await pb.collection('log').create(logData);
       
-      // Success feedback
       showSuccessMessage();
       closeModal();
       
-      // Dispatch custom event
       window.dispatchEvent(new CustomEvent('hoursLogged', { 
         detail: logData 
       }));
@@ -340,28 +319,19 @@
   }
   
   // Modal controls
-  function openModal() {
-    if (!isComponentReady) {
-      alert('Component is still loading. Please wait.');
-      return;
-    }
-    
-    if (!userInfoValue.isAuthenticated) {
-      alert('You must be logged in to log hours.');
-      return;
-    }
-    
-    if (assignedCustomers.length === 0 && !isAdmin) {
-      alert('No customers are assigned to you. Please contact your administrator.');
-      return;
-    }
-    
+  async function openModal() {
     showModal = true;
+    
+    // Load data after opening modal
+    if (allCustomers.length === 0) {
+      await loadDataIfNeeded();
+    }
   }
   
   function closeModal() {
     showModal = false;
     resetForm();
+    error = null;
   }
   
   function handleBackdropClick(event) {
@@ -377,11 +347,6 @@
     }
   }
   
-  // Component lifecycle
-  onMount(async () => {
-    await initializeComponent();
-  });
-  
   onDestroy(() => {
     if (unsubscribeUserInfo) {
       unsubscribeUserInfo();
@@ -392,32 +357,17 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <div class="p-4">
-  <!-- Open Modal Button -->
+  <!-- Always Clickable Button -->
   <button 
     on:click={openModal}
-    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-    disabled={isInitializing || !isComponentReady || !userInfoValue.isAuthenticated}
+    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex h-[50px] items-center cursor-pointer transition-colors duration-200"
+    type="button"
   >
     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
       <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
     </svg>
-    {#if isInitializing}
-      Loading...
-    {:else if error}
-      Error
-    {:else if !userInfoValue.isAuthenticated}
-      Not Authenticated
-    {:else}
-      Log Hours
-    {/if}
+    Log Hours
   </button>
-  
-  <!-- Error Message -->
-  {#if error}
-    <div class="mt-2 p-2 bg-red-100 text-red-700 rounded text-sm" transition:fade>
-      {error}
-    </div>
-  {/if}
   
   <!-- Modal -->
   {#if showModal}
@@ -432,145 +382,142 @@
       <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 id="modal-title" class="text-xl font-bold mb-4">Log Hours</h2>
         
-        <form on:submit|preventDefault={handleSubmit} class="space-y-4">
-          <!-- Customer Selection -->
-          <div>
-            <label for="customer-select" class="block text-sm font-medium text-gray-700">
-              Customer *
-            </label>
-            <select 
-              id="customer-select"
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              on:change={handleCustomerChange}
-              value={selectedCustomer?.id || ""}
-              required
-              disabled={isLoading}
-            >
-              <option value="">Select a customer</option>
-              {#each assignedCustomers as customer (customer.id)}
-                <option value={customer.id}>{customer.navn}</option>
-              {/each}
-            </select>
-            
-            {#if selectedCustomer}
-              <p class="mt-1 text-sm text-green-600">
-                Selected: {selectedCustomer.navn} ({selectedCustomer.timepris} kr/hour)
-              </p>
-            {/if}
-            
-            {#if assignedCustomers.length === 0 && !isAdmin && isComponentReady}
-              <p class="mt-1 text-sm text-red-600">
-                No customers assigned. Contact your administrator.
-              </p>
-            {/if}
+        {#if isLoadingData}
+          <!-- Loading state inside modal -->
+          <div class="flex flex-col items-center justify-center py-8">
+            <svg class="animate-spin h-8 w-8 text-blue-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" class="opacity-25"></circle>
+              <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-600">Loading data...</p>
           </div>
-          
-          <!-- Date -->
-          <div>
-            <label for="date-input" class="block text-sm font-medium text-gray-700">
-              Date *
-            </label>
-            <input 
-              id="date-input"
-              type="date" 
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              bind:value={formData.date}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          
-          <!-- Time Inputs -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label for="start-time" class="block text-sm font-medium text-gray-700">
-                Start Time *
-              </label>
-              <input 
-                id="start-time"
-                type="time" 
-                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                bind:value={formData.startTime}
-                required
-                disabled={isLoading}
-              />
+        {:else if error}
+          <!-- Error state inside modal -->
+          <div class="text-center py-8">
+            <div class="text-red-600 mb-4">
+              <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
+              </svg>
             </div>
-            
-            <div>
-              <label for="end-time" class="block text-sm font-medium text-gray-700">
-                End Time *
-              </label>
-              <input 
-                id="end-time"
-                type="time" 
-                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                bind:value={formData.endTime}
-                required
-                disabled={isLoading}
-              />
-            </div>
-          </div>
-          
-          <!-- Comment -->
-          <div>
-            <label for="comment" class="block text-sm font-medium text-gray-700">
-              Comment
-            </label>
-            <textarea 
-              id="comment"
-              class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              rows="3"
-              bind:value={formData.comment}
-              disabled={isLoading}
-              placeholder="Optional comment..."
-            ></textarea>
-          </div>
-          
-          <!-- Summary -->
-          <!-- {#if totalHours > 0 && selectedCustomer}
-            <div class="bg-gray-50 p-3 rounded border">
-              <p class="text-sm font-medium text-gray-700">
-                Actual Hours Worked: <span class="font-bold">{totalHours.toFixed(2)}</span>
-              </p>
-              <p class="text-sm font-medium text-gray-700">
-                Your Efficiency: <span class="font-bold">{userEffektivtid}%</span>
-              </p>
-              <p class="text-sm font-medium text-gray-700">
-                Billable Hours: <span class="font-bold text-blue-600">{effectiveHours.toFixed(2)}</span>
-              </p>
-              <p class="text-sm font-medium text-gray-700">
-                Rate: <span class="font-bold">{selectedCustomer.timepris} kr/hour</span>
-              </p>
-              <p class="text-sm font-bold text-gray-900 border-t pt-2 mt-2">
-                Total Amount: <span class="text-green-600">{totalPrice.toFixed(2)} kr</span>
-              </p>
-            </div>
-          {/if} -->
-          
-          <!-- Action Buttons -->
-          <div class="flex justify-end space-x-3 pt-4">
+            <p class="text-red-600 font-medium mb-4">{error}</p>
             <button
               type="button"
               class="bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 px-4 rounded transition-colors duration-200"
               on:click={closeModal}
-              disabled={isLoading}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px]"
-              disabled={isLoading || !selectedCustomer}
-            >
-              {#if isLoading}
-                <div class="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
-                Saving...
-              {:else}
-                Save
-              {/if}
+              Close
             </button>
           </div>
-        </form>
+        {:else}
+          <!-- Normal form -->
+          <form on:submit|preventDefault={handleSubmit} class="space-y-4">
+            <!-- Customer Selection -->
+            <div>
+              <label for="customer-select" class="block text-sm font-medium text-gray-700">
+                Customer *
+              </label>
+              <select 
+                id="customer-select"
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                on:change={handleCustomerChange}
+                value={selectedCustomer?.id || ""}
+                required
+                disabled={isLoading}
+              >
+                <option value="">Select a customer</option>
+                {#each assignedCustomers as customer (customer.id)}
+                  <option value={customer.id}>{customer.navn}</option>
+                {/each}
+              </select>
+              
+              {#if selectedCustomer}
+                <p class="mt-1 text-sm text-green-600">
+                  Selected: {selectedCustomer.navn} ({selectedCustomer.timepris} kr/hour)
+                </p>
+              {/if}
+            </div>
+            
+            <!-- Date -->
+            <div>
+              <label for="date-input" class="block text-sm font-medium text-gray-700">
+                Date *
+              </label>
+              <input 
+                id="date-input"
+                type="date" 
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                bind:value={formData.date}
+                required
+                disabled={isLoading}
+              />
+            </div>
+            
+            <!-- Time Inputs -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label for="start-time" class="block text-sm font-medium text-gray-700">
+                  Start Time *
+                </label>
+                <input 
+                  id="start-time"
+                  type="time" 
+                  class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  bind:value={formData.startTime}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+              
+              <div>
+                <label for="end-time" class="block text-sm font-medium text-gray-700">
+                  End Time *
+                </label>
+                <input 
+                  id="end-time"
+                  type="time" 
+                  class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  bind:value={formData.endTime}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            
+            <!-- Comment -->
+            <div>
+              <label for="comment" class="block text-sm font-medium text-gray-700">
+                Comment
+              </label>
+              <textarea 
+                id="comment"
+                class="mt-1 block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows="3"
+                bind:value={formData.comment}
+                disabled={isLoading}
+                placeholder="Optional comment..."
+              ></textarea>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                class="bg-gray-300 hover:bg-gray-400 text-black font-bold py-2 px-4 rounded transition-colors duration-200"
+                on:click={closeModal}
+                disabled={isLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px]"
+                disabled={isLoading || !selectedCustomer}
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        {/if}
       </div>
     </div>
   {/if}
