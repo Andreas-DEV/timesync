@@ -2,6 +2,8 @@
     import { onMount, onDestroy } from "svelte";
     import PocketBase from "pocketbase";
 
+    let test;
+
     // Initialize PocketBase
     const pb = new PocketBase("https://timesync.pockethost.io/");
 
