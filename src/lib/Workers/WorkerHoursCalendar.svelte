@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import PocketBase from 'pocketbase';
+	import * as XLSX from 'xlsx';
 
 	const pb = new PocketBase('https://timesync.pockethost.io');
 
@@ -395,6 +396,85 @@
 		}
 	}
 
+	// Export report to Excel
+	function exportReportToExcel() {
+		if (!reportData) {
+			alert('Please generate a report first');
+			return;
+		}
+
+		// Create workbook
+		const wb = XLSX.utils.book_new();
+		
+		// Summary data
+		const summaryData = [
+			{ 'Field': 'Worker', 'Value': reportData.worker?.name || reportData.worker?.email?.split('@')[0] || 'Unknown' },
+			{ 'Field': 'Employee Number', 'Value': reportData.worker?.medarbejdernr || 'N/A' },
+			{ 'Field': 'Pay Period', 'Value': reportData.worker?.loentermin || 'N/A' },
+			{ 'Field': 'Report Period', 'Value': `${new Date(reportData.startDate).toLocaleDateString()} - ${new Date(reportData.endDate).toLocaleDateString()}` },
+			{ 'Field': '', 'Value': '' }, // Empty row
+			{ 'Field': 'Total Normal Hours', 'Value': reportData.totalNormalHours.toFixed(2) },
+			{ 'Field': 'Total Overtime Hours', 'Value': reportData.totalOvertimeHours.toFixed(2) },
+			{ 'Field': 'Total Hours', 'Value': reportData.totalHours.toFixed(2) },
+			{ 'Field': 'Working Days', 'Value': reportData.totalDays },
+			{ 'Field': 'Average Hours/Day', 'Value': reportData.averageHoursPerDay.toFixed(2) }
+		];
+		
+		// Daily breakdown data
+		const dailyData = [];
+		Object.entries(reportData.dailyBreakdown).sort().forEach(([date, data]) => {
+			data.records.forEach(record => {
+				dailyData.push({
+					'Date': new Date(date).toLocaleDateString(),
+					'Day': new Date(date).toLocaleDateString('en-US', { weekday: 'long' }),
+					'Clock In': formatTimeDisplay(record.start),
+					'Clock Out': formatTimeDisplay(record.slut),
+					'Normal Hours': (record.totalsum || 0).toFixed(2),
+					'Overtime Hours': (record.overarbejde || 0).toFixed(2),
+					'Total Hours': ((record.totalsum || 0) + (record.overarbejde || 0)).toFixed(2),
+					'Overtime Status': record.overtid ? 'Yes' : 'No',
+					'Comments': record.kommentar || ''
+				});
+			});
+		});
+		
+		// Create worksheets
+		const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+		const wsDaily = XLSX.utils.json_to_sheet(dailyData);
+		
+		// Set column widths for summary
+		wsSummary['!cols'] = [
+			{ wch: 25 }, // Field
+			{ wch: 40 }  // Value
+		];
+		
+		// Set column widths for daily breakdown
+		wsDaily['!cols'] = [
+			{ wch: 12 }, // Date
+			{ wch: 12 }, // Day
+			{ wch: 10 }, // Clock In
+			{ wch: 10 }, // Clock Out
+			{ wch: 12 }, // Normal Hours
+			{ wch: 14 }, // Overtime Hours
+			{ wch: 12 }, // Total Hours
+			{ wch: 14 }, // Overtime Status
+			{ wch: 30 }  // Comments
+		];
+		
+		// Add worksheets to workbook
+		XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+		XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Breakdown');
+		
+		// Generate filename
+		const workerName = (reportData.worker?.name || reportData.worker?.email?.split('@')[0] || 'Unknown').replace(/\s+/g, '_');
+		const startDate = new Date(reportData.startDate).toISOString().split('T')[0];
+		const endDate = new Date(reportData.endDate).toISOString().split('T')[0];
+		const filename = `worker_hours_${workerName}_${startDate}_to_${endDate}.xlsx`;
+		
+		// Save the file
+		XLSX.writeFile(wb, filename);
+	}
+
 	// Delete worker hours entry
 	async function deleteWorkerHours() {
 		if (!hoursToDelete) return;
@@ -561,7 +641,7 @@
 		<div class="flex items-center space-x-4">
 			<button
 				on:click={previousMonth}
-				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -574,7 +654,7 @@
 			
 			<button
 				on:click={nextMonth}
-				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -583,7 +663,7 @@
 			
 			<button
 				on:click={openReportModal}
-				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
 				title="Worker Hours Report"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -593,7 +673,7 @@
 			
 			<button
 				on:click={fetchWorkerHours}
-				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+				class="p-2 rounded-md border border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
 				disabled={loading}
 				title="Refresh calendar"
 			>
@@ -1062,6 +1142,18 @@
 			{/if}
 			
 			<div class="flex justify-end mt-6">
+				{#if reportData}
+					<button
+						type="button"
+						class="px-4 py-2 mr-3 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 cursor-pointer flex items-center"
+						on:click={exportReportToExcel}
+					>
+						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+						</svg>
+						Export to Excel
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
