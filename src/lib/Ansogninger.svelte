@@ -14,8 +14,255 @@
     let refreshMessageTimeout = null;
     let showInterviewDatePicker = false;
     let interviewDate = "";
+    let interviewTime = ""; // New field for interview time
     let currentMonth = new Date();
-    let activeTab = "all"; // 'all', 'interview', 'denied', 'calendar'
+    let activeTab = "all"; // 'all', 'interview', 'denied', 'emailsent', 'completed', 'calendar'
+    
+    // Email selection states
+    let selectedForEmail = new Set();
+    let showEmailModal = false;
+    let emailSubject = "";
+    let emailBody = "";
+    let emailType = "custom"; // 'custom', 'denial', 'interview', 'followup'
+    
+    // Email templates
+    const emailTemplates = {
+        denial: {
+            subject: "Vedrørende din jobansøgning",
+            body: `Kære [Name],
+
+Tak for din interesse i vores stilling og for at du tog dig tid til at sende din ansøgning.
+
+Efter nøje overvejelse af alle ansøgninger må vi desværre meddele, at vi ikke går videre med din ansøgning på nuværende tidspunkt.
+
+Vi sætter pris på din interesse i vores virksomhed og ønsker dig alt det bedste fremover.
+
+Med venlig hilsen,
+Grønbech Revision`
+        },
+        interview: {
+            subject: "Invitation til jobsamtale",
+            body: `Kære [Name],
+
+Vi har med glæde gennemgået din ansøgning og vil gerne invitere dig til en jobsamtale vedrørende den stilling, du har søgt.
+
+Samtaledetaljer:
+Dato: [Date]
+Tidspunkt: [Time]
+
+Venligst bekræft din deltagelse ved at svare på denne email.
+
+Vi ser frem til at møde dig.
+
+Med venlig hilsen,
+Grønbech Revision`
+        },
+        followup: {
+            subject: "Opfølgning på din ansøgning",
+            body: `Kære [Name],
+
+Tak for din ansøgning til vores stilling.
+
+Vi vil gerne bekræfte, at vi har modtaget din ansøgning og er i gang med at gennemgå alle kandidater. Vi vender tilbage snarest muligt vedrørende de næste skridt i processen.
+
+Hvis du har spørgsmål i mellemtiden, er du velkommen til at kontakte os.
+
+Med venlig hilsen,
+Grønbech Revision`
+        },
+        custom: {
+            subject: "",
+            body: ""
+        }
+    };
+
+    // Function to send email via backend API
+    const sendEmail = async (to, subject, body, type = 'general') => {
+        try {
+            const response = await fetch('/api/send-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    to,
+                    subject,
+                    html: body.replace(/\n/g, '<br>'),
+                    type
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send email');
+            }
+
+            return await response.json();
+        } catch (err) {
+            console.error('Error sending email:', err);
+            throw err;
+        }
+    };
+
+    // Function to get count for each tab
+    const getTabCount = (tab) => {
+        switch(tab) {
+            case 'all':
+                return applications.filter(app => app.accepted === 0).length;
+            case 'interview':
+                return applications.filter(app => app.accepted === 1).length;
+            case 'denied':
+                return applications.filter(app => app.accepted === 3 && !app.email_sent).length;
+            case 'emailsent':
+                return applications.filter(app => app.accepted === 3 && app.email_sent).length;
+            case 'completed':
+                return applications.filter(app => app.accepted === 4).length;
+            default:
+                return 0;
+        }
+    };
+
+    // Function to load email template
+    const loadEmailTemplate = (template) => {
+        emailType = template;
+        const selectedTemplate = emailTemplates[template];
+        emailSubject = selectedTemplate.subject;
+        emailBody = selectedTemplate.body;
+    };
+
+    // Function to send emails to selected recipients
+    const sendBatchEmails = async () => {
+        if (selectedForEmail.size === 0) {
+            alert('Please select at least one recipient.');
+            return;
+        }
+
+        if (!emailSubject || !emailBody) {
+            alert('Please enter both subject and body for the email.');
+            return;
+        }
+
+        loading = true;
+
+        try {
+            // Prepare batch recipients
+            const recipients = [];
+            for (const appId of selectedForEmail) {
+                const app = applications.find(a => a.id === appId);
+                if (app) {
+                    recipients.push({
+                        email: app.email,
+                        name: app.name,
+                        id: app.id
+                    });
+                }
+            }
+
+            // Prepare request body
+            const requestBody = {
+                batch: recipients,
+                subject: emailSubject,
+                html: emailBody.replace(/\n/g, '<br>'),
+                type: emailType
+            };
+
+            // Log the request for debugging
+            console.log('Sending email request:', requestBody);
+
+            // Send all emails in one batch request to SendGrid
+            const response = await fetch('/api/send-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            const responseData = await response.json();
+            
+            if (!response.ok) {
+                console.error('Email API error:', responseData);
+                throw new Error(responseData.error || 'Failed to send emails');
+            }
+
+            // Update email_sent status for all recipients
+            for (const recipient of recipients) {
+                // If this was a denial email, update both status and email_sent
+                if (emailType === 'denial') {
+                    await pb.collection("ansogninger").update(recipient.id, { 
+                        accepted: 3,
+                        email_sent: true
+                    });
+                } else {
+                    // For other email types, just mark email as sent
+                    await pb.collection("ansogninger").update(recipient.id, { 
+                        email_sent: true
+                    });
+                }
+            }
+            
+            // Update local state
+            applications = applications.map(app => {
+                if (selectedForEmail.has(app.id)) {
+                    return {
+                        ...app,
+                        ...(emailType === 'denial' && { accepted: 3 }),
+                        email_sent: true
+                    };
+                }
+                return app;
+            });
+
+            refreshMessage = `Successfully sent ${recipients.length} email(s)!`;
+            
+            // Clear selections
+            selectedForEmail.clear();
+            showEmailModal = false;
+            emailSubject = "";
+            emailBody = "";
+            emailType = "custom";
+
+            // Clear message after 5 seconds
+            if (refreshMessageTimeout) clearTimeout(refreshMessageTimeout);
+            refreshMessageTimeout = setTimeout(() => {
+                refreshMessage = null;
+            }, 5000);
+
+        } catch (err) {
+            console.error('Email sending error:', err);
+            error = err.message;
+            refreshMessage = `Error: ${err.message}`;
+            
+            if (refreshMessageTimeout) clearTimeout(refreshMessageTimeout);
+            refreshMessageTimeout = setTimeout(() => {
+                refreshMessage = null;
+            }, 5000);
+        } finally {
+            loading = false;
+        }
+    };
+
+    // Function to send interview invitation email
+    const sendInterviewInvitation = async (application, date, time) => {
+        const formattedDate = new Date(date).toLocaleDateString('da-DK', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        // Personalize the email
+        let personalizedBody = emailTemplates.interview.body
+            .replace('[Name]', application.name)
+            .replace('[Date]', formattedDate)
+            .replace('[Time]', time);
+
+        try {
+            await sendEmail(application.email, emailTemplates.interview.subject, personalizedBody, 'interview');
+            return true;
+        } catch (err) {
+            console.error('Failed to send interview invitation:', err);
+            return false;
+        }
+    };
 
     // Function to fetch all applications
     const fetchApplications = async () => {
@@ -93,6 +340,8 @@
         id,
         status,
         interviewDate = null,
+        interviewTime = null,
+        sendEmailNotification = false
     ) => {
         try {
             loading = true;
@@ -100,13 +349,27 @@
             // Prepare data for update
             const data = { accepted: status };
 
-            // Add interview date if provided
+            // Add interview date and time if provided
             if (interviewDate) {
                 data.interviewdate = interviewDate;
+            }
+            if (interviewTime) {
+                data.interview_tidspunkt = interviewTime;
             }
 
             // Update the record
             await pb.collection("ansogninger").update(id, data);
+
+            // Send email if requested
+            if (sendEmailNotification && status === 1) {
+                const app = applications.find(a => a.id === id);
+                if (app) {
+                    const emailSent = await sendInterviewInvitation(app, interviewDate, interviewTime);
+                    if (!emailSent) {
+                        refreshMessage = "Interview scheduled but email notification failed.";
+                    }
+                }
+            }
 
             // If we're updating the currently selected application, update its status
             if (selectedApplication && selectedApplication.id === id) {
@@ -114,6 +377,7 @@
                     ...selectedApplication,
                     accepted: status,
                     ...(interviewDate && { interviewdate: interviewDate }),
+                    ...(interviewTime && { interview_tidspunkt: interviewTime }),
                 };
             }
 
@@ -126,6 +390,9 @@
                           ...(interviewDate && {
                               interviewdate: interviewDate,
                           }),
+                          ...(interviewTime && {
+                              interview_tidspunkt: interviewTime,
+                          }),
                       }
                     : app,
             );
@@ -137,6 +404,9 @@
                     ? new Date(interviewDate).toLocaleDateString()
                     : "";
                 message = `Applicant marked for interview${formattedDate ? ` on ${formattedDate}` : ""}!`;
+                if (sendEmailNotification) {
+                    message += " Email invitation sent.";
+                }
             } else if (status === 4) {
                 message = "Application marked as complete!";
             } else {
@@ -157,6 +427,7 @@
             // Reset the date picker state
             showInterviewDatePicker = false;
             interviewDate = "";
+            interviewTime = "";
 
             return true; // Return a resolved promise
         } catch (err) {
@@ -253,6 +524,13 @@
             interviewDate = `${year}-${month}-${day}`;
         }
 
+        // Set default time or use existing
+        if (selectedApplication.interview_tidspunkt) {
+            interviewTime = selectedApplication.interview_tidspunkt;
+        } else {
+            interviewTime = "10:00"; // Default time
+        }
+
         showInterviewDatePicker = true;
     };
 
@@ -262,25 +540,76 @@
             alert("Please select a date for the interview");
             return;
         }
+        if (!interviewTime) {
+            alert("Please select a time for the interview");
+            return;
+        }
 
-        updateApplicationStatus(selectedApplication.id, 1, interviewDate).then(
-            () => {
-                // Navigate back to list view and show calendar tab
-                selectedApplication = null;
-                activeTab = "calendar";
-            },
-        );
+        updateApplicationStatus(
+            selectedApplication.id, 
+            1, 
+            interviewDate, 
+            interviewTime,
+            true // Send email notification
+        ).then(() => {
+            // Navigate back to list view and show calendar tab
+            selectedApplication = null;
+            activeTab = "calendar";
+        });
     };
 
     // Function to format date for display in interview badge
-    const formatInterviewDate = (dateString) => {
+    const formatInterviewDate = (dateString, timeString) => {
         if (!dateString) return "";
         const date = new Date(dateString);
-        return date.toLocaleDateString("da-DK", {
+        let formatted = date.toLocaleDateString("da-DK", {
             year: "numeric",
             month: "short",
             day: "numeric",
         });
+        if (timeString) {
+            formatted += ` at ${timeString}`;
+        }
+        return formatted;
+    };
+
+    // Toggle selection for email
+    const toggleEmailSelection = (id, event) => {
+        event.stopPropagation();
+        if (selectedForEmail.has(id)) {
+            selectedForEmail.delete(id);
+        } else {
+            selectedForEmail.add(id);
+        }
+        selectedForEmail = selectedForEmail; // Trigger reactivity
+    };
+
+    // Select all visible applications for email (only works on denied tab)
+    const selectAllForEmail = () => {
+        if (activeTab !== "denied") return;
+        
+        // Only select denied applicants who haven't been sent an email yet
+        const deniedWithoutEmail = applications.filter((app) => app.accepted === 3 && !app.email_sent);
+        deniedWithoutEmail.forEach(app => selectedForEmail.add(app.id));
+        selectedForEmail = selectedForEmail; // Trigger reactivity
+    };
+
+    // Clear all email selections
+    const clearEmailSelections = () => {
+        selectedForEmail.clear();
+        selectedForEmail = selectedForEmail; // Trigger reactivity
+    };
+
+    // Open email modal with selected recipients
+    const openEmailModal = () => {
+        if (selectedForEmail.size === 0) {
+            alert('Please select at least one recipient first.');
+            return;
+        }
+        showEmailModal = true;
+        emailType = "custom";
+        emailSubject = "";
+        emailBody = "";
     };
 
     // Functions for calendar view
@@ -427,7 +756,12 @@
                         }`}
                         on:click={() => (activeTab = "all")}
                     >
-                        All Applications
+                        New Applications
+                        {#if getTabCount('all') > 0}
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-blue-600 rounded-full">
+                                {getTabCount('all')}
+                            </span>
+                        {/if}
                     </button>
                     <button
                         class={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm cursor-pointer ${
@@ -438,6 +772,11 @@
                         on:click={() => (activeTab = "interview")}
                     >
                         For Interview
+                        {#if getTabCount('interview') > 0}
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-green-600 rounded-full">
+                                {getTabCount('interview')}
+                            </span>
+                        {/if}
                     </button>
                     <button
                         class={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm cursor-pointer ${
@@ -447,7 +786,27 @@
                         }`}
                         on:click={() => (activeTab = "denied")}
                     >
-                        Denied Applicants
+                        Denied (Pending Email)
+                        {#if getTabCount('denied') > 0}
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                                {getTabCount('denied')}
+                            </span>
+                        {/if}
+                    </button>
+                    <button
+                        class={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm cursor-pointer ${
+                            activeTab === "emailsent"
+                                ? "border-blue-500 text-blue-600"
+                                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        }`}
+                        on:click={() => (activeTab = "emailsent")}
+                    >
+                        Denied (Email Sent)
+                        {#if getTabCount('emailsent') > 0}
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-gray-600 rounded-full">
+                                {getTabCount('emailsent')}
+                            </span>
+                        {/if}
                     </button>
                     <button
                         class={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm cursor-pointer ${
@@ -458,6 +817,11 @@
                         on:click={() => (activeTab = "completed")}
                     >
                         Completed
+                        {#if getTabCount('completed') > 0}
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-purple-600 rounded-full">
+                                {getTabCount('completed')}
+                            </span>
+                        {/if}
                     </button>
                     <button
                         class={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm cursor-pointer ${
@@ -519,6 +883,7 @@
                                         <span class="ml-1"
                                             >({formatInterviewDate(
                                                 selectedApplication.interviewdate,
+                                                selectedApplication.interview_tidspunkt
                                             )})</span
                                         >
                                     {/if}
@@ -752,6 +1117,33 @@
                                         class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
+                                <div class="mb-4">
+                                    <label
+                                        for="interviewTime"
+                                        class="block text-sm font-medium text-gray-700 mb-2"
+                                    >
+                                        Select Time for Interview
+                                    </label>
+                                    <input
+                                        type="time"
+                                        id="interviewTime"
+                                        bind:value={interviewTime}
+                                        class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div class="mb-4">
+                                    <label class="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={true}
+                                            disabled
+                                            class="mr-2"
+                                        />
+                                        <span class="text-sm text-gray-700">
+                                            Send email invitation to applicant
+                                        </span>
+                                    </label>
+                                </div>
                                 <div class="flex justify-end space-x-3">
                                     <button
                                         on:click={() =>
@@ -764,7 +1156,7 @@
                                         on:click={scheduleInterview}
                                         class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
                                     >
-                                        Schedule Interview
+                                        Schedule Interview & Send Email
                                     </button>
                                 </div>
                             </div>
@@ -773,6 +1165,31 @@
                 </div>
             </div>
         {:else}
+            <!-- Batch actions bar (only show on 'denied' tab when items are selected) -->
+            {#if activeTab === "denied" && selectedForEmail.size > 0}
+                <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-700">
+                            {selectedForEmail.size} recipient(s) selected
+                        </span>
+                        <div class="flex space-x-3">
+                            <button
+                                on:click={clearEmailSelections}
+                                class="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                            >
+                                Clear Selection
+                            </button>
+                            <button
+                                on:click={openEmailModal}
+                                class="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            >
+                                Send Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
             <!-- List view of all applications -->
             {#if applications.length === 0}
                 <div class="bg-white rounded-lg shadow-lg p-6 text-center select-none">
@@ -897,8 +1314,9 @@
                                                         viewApplication(
                                                             interview,
                                                         )}
+                                                    title={`${interview.name} at ${interview.interview_tidspunkt || 'TBD'}`}
                                                 >
-                                                    {interview.name}
+                                                    {interview.interview_tidspunkt || ''} {interview.name}
                                                 </div>
                                             {/each}
                                         </div>
@@ -912,11 +1330,13 @@
                 <!-- Filter applications based on active tab -->
                 {@const filteredApplications =
                     activeTab === "all"
-                        ? applications
+                        ? applications.filter((app) => app.accepted === 0)
                         : activeTab === "interview"
                           ? applications.filter((app) => app.accepted === 1)
                           : activeTab === "denied"
-                            ? applications.filter((app) => app.accepted === 3)
+                            ? applications.filter((app) => app.accepted === 3 && !app.email_sent)
+                            : activeTab === "emailsent"
+                              ? applications.filter((app) => app.accepted === 3 && app.email_sent)
                             : activeTab === "completed"
                               ? applications.filter((app) => app.accepted === 4)
                               : applications}
@@ -932,6 +1352,16 @@
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
+                                    {#if activeTab === "denied"}
+                                        <th scope="col" class="px-6 py-3">
+                                            <button
+                                                on:click={selectAllForEmail}
+                                                class="text-xs text-blue-600 hover:text-blue-800"
+                                            >
+                                                Select All
+                                            </button>
+                                        </th>
+                                    {/if}
                                     <th
                                         scope="col"
                                         class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider select-none"
@@ -975,6 +1405,16 @@
                                         on:click={() =>
                                             viewApplication(application)}
                                     >
+                                        {#if activeTab === "denied"}
+                                            <td class="px-6 py-4" on:click|stopPropagation>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedForEmail.has(application.id)}
+                                                    on:change={(e) => toggleEmailSelection(application.id, e)}
+                                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                />
+                                            </td>
+                                        {/if}
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <div class="text-sm text-gray-900">
                                                 {application.name}
@@ -994,6 +1434,7 @@
                                                     class="text-sm text-gray-900"
                                                     >{formatInterviewDate(
                                                         application.interviewdate,
+                                                        application.interview_tidspunkt
                                                     )}</span
                                                 >
                                             {:else}
@@ -1059,12 +1500,6 @@
                                                 >
                                                     View
                                                 </button>
-                                                <!-- <button 
-                              on:click={(e) => deleteApplication(application.id, e)} 
-                              class="text-red-600 hover:text-red-900"
-                            >
-                              Delete
-                            </button> -->
                                             </div>
                                         </td>
                                     </tr>
@@ -1074,6 +1509,138 @@
                     </div>
                 {/if}
             {/if}
+        {/if}
+
+        <!-- Email Modal -->
+        {#if showEmailModal}
+            <div class="fixed inset-0 flex items-center justify-center z-50">
+                <div class="absolute inset-0 bg-black opacity-50"></div>
+                <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl z-10 max-h-[80vh] overflow-y-auto">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">
+                        Send Email to {selectedForEmail.size} Recipient(s)
+                    </h3>
+                    
+                    <!-- Template selector -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Email Template
+                        </label>
+                        <div class="grid grid-cols-4 gap-2">
+                            <button
+                                on:click={() => loadEmailTemplate('custom')}
+                                class={`px-3 py-2 text-sm rounded border ${
+                                    emailType === 'custom' 
+                                        ? 'bg-blue-500 text-white border-blue-500' 
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                Custom
+                            </button>
+                            <button
+                                on:click={() => loadEmailTemplate('denial')}
+                                class={`px-3 py-2 text-sm rounded border ${
+                                    emailType === 'denial' 
+                                        ? 'bg-blue-500 text-white border-blue-500' 
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                Denial
+                            </button>
+                            <button
+                                on:click={() => loadEmailTemplate('interview')}
+                                class={`px-3 py-2 text-sm rounded border ${
+                                    emailType === 'interview' 
+                                        ? 'bg-blue-500 text-white border-blue-500' 
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                Interview
+                            </button>
+                            <button
+                                on:click={() => loadEmailTemplate('followup')}
+                                class={`px-3 py-2 text-sm rounded border ${
+                                    emailType === 'followup' 
+                                        ? 'bg-blue-500 text-white border-blue-500' 
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                Follow-up
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Recipients preview -->
+                    <div class="mb-4 p-3 bg-gray-50 rounded max-h-32 overflow-y-auto">
+                        <p class="text-xs font-medium text-gray-700 mb-1">Recipients:</p>
+                        <div class="text-xs text-gray-600">
+                            {#each Array.from(selectedForEmail) as appId, index}
+                                {@const app = applications.find(a => a.id === appId)}
+                                {#if app}
+                                    <span class="inline-block mr-2 mb-1 px-2 py-1 bg-white rounded border border-gray-200">
+                                        {app.name} ({app.email})
+                                    </span>
+                                {/if}
+                            {/each}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Email Subject
+                        </label>
+                        <input
+                            type="text"
+                            bind:value={emailSubject}
+                            placeholder="Enter email subject..."
+                            class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Email Body
+                        </label>
+                        <div class="text-xs text-gray-500 mb-2">
+                            Available placeholders: [Name], [Date], [Time]
+                        </div>
+                        <textarea
+                            bind:value={emailBody}
+                            rows="12"
+                            placeholder="Enter email body..."
+                            class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        ></textarea>
+                    </div>
+
+                    {#if emailType === 'denial'}
+                        <div class="mb-4 p-3 bg-yellow-50 rounded border border-yellow-200">
+                            <p class="text-sm text-yellow-800">
+                                ⚠️ Sending denial emails will automatically update the selected applications to "Denied" status.
+                            </p>
+                        </div>
+                    {/if}
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button
+                            on:click={() => {
+                                showEmailModal = false;
+                                emailSubject = "";
+                                emailBody = "";
+                                emailType = "custom";
+                            }}
+                            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            on:click={sendBatchEmails}
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            disabled={loading}
+                        >
+                            {loading ? 'Sending...' : `Send Email${selectedForEmail.size > 1 ? 's' : ''}`}
+                        </button>
+                    </div>
+                </div>
+            </div>
         {/if}
     </div>
 </div>

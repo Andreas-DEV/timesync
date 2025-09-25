@@ -3,5 +3,8 @@
 	"/api/cvr-proxy": [
 		"src/routes/api/cvr-proxy/+server.js"
 	],
+	"/api/send-email": [
+		"src/routes/api/send-email/+server.js"
+	],
 	"/dashboard": []
 }
