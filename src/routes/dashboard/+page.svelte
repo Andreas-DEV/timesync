@@ -27,8 +27,12 @@
   // Initialize PocketBase
   const pb = new PocketBase("https://timesync.pockethost.io/");
 
-  // Admin configuration
-  const ADMIN_USER_ID = "0273221tcxal6i5";
+  // Admin configuration - now supports multiple admin IDs
+  const ADMIN_USER_IDS = [
+    "0273221tcxal6i5",
+    "1w0tr5izibi7ctc",
+    "l99atskoz1vex9a",
+  ];
 
   // State variables
   let isLoggedIn = false;
@@ -82,9 +86,9 @@
     ? [...baseSiteLinks, ...adminSiteLinks] 
     : baseSiteLinks;
 
-  // Check if user is admin
+  // Check if user is admin - updated to check against array
   function isUserAdmin(user) {
-    return user && user.id === ADMIN_USER_ID;
+    return user && ADMIN_USER_IDS.includes(user.id);
   }
 
   // Check if current active site requires admin access
