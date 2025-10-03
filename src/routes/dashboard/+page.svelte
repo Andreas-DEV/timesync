@@ -31,7 +31,7 @@
   const ADMIN_USER_IDS = [
     "0273221tcxal6i5",
     "1w0tr5izibi7ctc",
-    "l99atskoz1vex9a",
+    "lto75u704oj07sx",
   ];
 
   // State variables
